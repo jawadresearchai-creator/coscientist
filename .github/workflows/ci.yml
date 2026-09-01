@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  python-kernel:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,7 +18,47 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install
+      - name: Install Python kernel
         run: pip install -e ".[dev]"
-      - name: Test
+      - name: Python/kernel tests
+        run: pytest -q
+
+  full-contract-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      # The ordinary CI must exercise the cross-language contract, not report a
+      # green suite with all R tests skipped. These are the R packages used by
+      # the contract tests themselves; the full research stack is verified by
+      # scientific-toolchain.yml.
+      - name: Install R contract dependencies
+        shell: Rscript {0}
+        run: |
+          install.packages(c("jsonlite", "digest", "data.table"),
+                           repos = "https://cloud.r-project.org")
+          stopifnot(
+            requireNamespace("jsonlite", quietly = TRUE),
+            requireNamespace("digest", quietly = TRUE),
+            requireNamespace("data.table", quietly = TRUE)
+          )
+
+      - name: Install Python kernel
+        run: pip install -e ".[dev]"
+
+      - name: Verify both runtimes are live
+        run: |
+          python --version
+          Rscript --version
+
+      - name: Full cross-language contract suite
         run: pytest -q
