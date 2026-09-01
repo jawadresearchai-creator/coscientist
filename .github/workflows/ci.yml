@@ -42,6 +42,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r@v2
         with:
+          r-version: "4.6.1"
           use-public-rspm: true
 
       # Ordinary CI must exercise the cross-language contract, not report a
@@ -88,6 +89,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r@v2
         with:
+          r-version: "4.6.1"
           use-public-rspm: true
 
       - name: Install system libraries for scientific computing
@@ -99,7 +101,8 @@ jobs:
             libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
             libfreetype6-dev libpng-dev libtiff-dev libjpeg-dev \
             libgdal-dev libgeos-dev libproj-dev libudunits2-dev \
-            libopenblas-dev liblapack-dev jq sqlite3
+            libopenblas-dev liblapack-dev libglpk-dev libgmp3-dev \
+            jq sqlite3
 
       - name: Install CoScientist and advanced Python analysis stack
         run: |
@@ -154,6 +157,12 @@ jobs:
           print(versions)
           RS
 
+      # This is a real snapshot of a successful installation, not a fabricated
+      # lock. Until the generated lock is committed, it is preserved as an
+      # Actions artifact so the exact file can be reviewed and promoted.
+      - name: Generate renv lock from the real environment
+        run: Rscript -e 'renv::snapshot(type = "all", prompt = FALSE)'
+
       - name: Cache CmdStan
         uses: actions/cache@v4
         with:
@@ -195,6 +204,7 @@ jobs:
           python -m pip freeze > toolchain-report/python-freeze.txt
           Rscript -e 'ip <- installed.packages()[,c("Package","Version")]; write.table(ip, file="toolchain-report/r-packages.tsv", sep="\t", quote=FALSE, row.names=FALSE)' || true
           Rscript -e 'if (requireNamespace("cmdstanr", quietly=TRUE)) cat(as.character(cmdstanr::cmdstan_version(error_on_NA=FALSE)), "\n")' > toolchain-report/cmdstan.txt 2>&1 || true
+          if [ -f renv.lock ]; then cp renv.lock toolchain-report/renv.lock; fi
 
       - name: Upload toolchain inventory
         if: always()
