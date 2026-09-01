@@ -1,12 +1,8 @@
-# Weekly source and credential verification.
+# Persistent CoScientist <-> GMS integration health check.
 #
-# Catches the two silent killers this project has actually hit:
-#   1. A source whose access class changed underneath it. USPTO retired its
-#      bulk hosts and nothing noticed for months.
-#   2. A credential that quietly expired. Google OAuth refresh tokens die
-#      after seven days while the consent screen sits in Testing status.
-#
-# Runs on schedule so rot is found on a clock, not mid-build.
+# Provider-specific ingestion credentials belong to the gms-data-lake repo.
+# CoScientist validates only the control/data-plane contract it consumes:
+# GitHub status, Drive OAuth liveness, and the GMS SQLite manifests/catalog.
 
 name: doctor
 
@@ -32,36 +28,16 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
 
-      - name: Source registry audit
-        env:
-          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
-          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
-          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
-          GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
-          GCP_BIGQUERY_PROJECT_ID: ${{ secrets.GCP_BIGQUERY_PROJECT_ID }}
-          GCP_OAUTH_CLIENT_ID: ${{ secrets.GCP_OAUTH_CLIENT_ID }}
-          GCP_OAUTH_CLIENT_SECRET: ${{ secrets.GCP_OAUTH_CLIENT_SECRET }}
-          GCP_OAUTH_REFRESH_TOKEN: ${{ secrets.GCP_OAUTH_REFRESH_TOKEN }}
-          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
-          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
-          COMTRADE_API_KEY: ${{ secrets.COMTRADE_API_KEY }}
-          WTO_API_KEY: ${{ secrets.WTO_API_KEY }}
-          ACLED_USERNAME: ${{ secrets.ACLED_USERNAME }}
-          ACLED_PASSWORD: ${{ secrets.ACLED_PASSWORD }}
-          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
-        run: coscientist doctor --strict
+      - name: Kernel tests
+        run: pytest -q
 
-      # A refresh token that still exists but no longer refreshes is the failure
-      # this step exists to catch, and the reason it runs weekly rather than on
-      # demand: Google expires refresh tokens after seven days while the consent
-      # screen sits in Testing status. Found on a Monday morning it is an
-      # annoyance; found mid-build it costs the run.
-      - name: Credential liveness
+      - name: Google Drive OAuth liveness
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
         run: coscientist doctor --live
+
       - name: GMS GitHub control-plane status
         env:
           GMSDL_GITHUB_REPO: ${{ vars.GMSDL_GITHUB_REPO }}
@@ -79,4 +55,3 @@ jobs:
         run: |
           coscientist lake-sync --out state/gms_lake_catalog.json
           coscientist lake-doctor --catalog state/gms_lake_catalog.json
-
