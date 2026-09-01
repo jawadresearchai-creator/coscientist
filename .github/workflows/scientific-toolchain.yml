@@ -79,8 +79,8 @@ jobs:
         run: Rscript R/dependencies.R --install
 
       - name: Verify every declared R package is loadable
-        shell: Rscript {0}
         run: |
+          Rscript - <<'RS'
           source("R/dependencies.R")
           missing <- names(DEPENDENCIES)[!vapply(
             names(DEPENDENCIES), requireNamespace, logical(1), quietly = TRUE
@@ -92,6 +92,7 @@ jobs:
             as.character(utils::packageVersion(p))
           }, character(1))
           print(versions)
+          RS
 
       - name: Cache CmdStan
         uses: actions/cache@v4
@@ -100,8 +101,8 @@ jobs:
           key: scientific-cmdstan-${{ runner.os }}-${{ hashFiles('R/dependencies.R') }}
 
       - name: Install and verify CmdStan
-        shell: Rscript {0}
         run: |
+          Rscript - <<'RS'
           cmdstanr::check_cmdstan_toolchain(fix = TRUE, quiet = FALSE)
           v <- tryCatch(cmdstanr::cmdstan_version(error_on_NA = FALSE),
                         error = function(e) NA)
@@ -109,6 +110,7 @@ jobs:
             cmdstanr::install_cmdstan(cores = 2, quiet = FALSE)
           }
           print(cmdstanr::cmdstan_version())
+          RS
 
       - name: Verify Python can see CmdStan
         run: |
