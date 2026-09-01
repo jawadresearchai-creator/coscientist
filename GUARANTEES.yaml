@@ -1,0 +1,323 @@
+# Executable guarantee registry.
+#
+# Four reviews found the same shape each time: the documentation claims a
+# guarantee, the code implements a narrower one. Patching instances does not
+# stop the next instance -- so every guarantee this system claims is listed
+# here and names the test that enforces it.
+#
+# `test_integrity.py::test_every_guarantee_names_a_real_test` fails if any
+# entry names a test that does not exist. Adding a claim to the docs without
+# adding a test now breaks the build.
+
+guarantees:
+  - id: FREEZE_HASH_COVERS_DESIGN
+    claim: The freeze hash covers the scientific design and is order-independent.
+    test: test_hash_is_order_independent
+
+  - id: FREEZE_DETECTS_TAMPERING
+    claim: An altered freeze manifest fails to load.
+    test: test_a_tampered_manifest_file_is_detected
+
+  - id: FREEZE_REQUIRES_STORED_HASH
+    claim: A manifest with no stored hash is invalid; deleting the checksum does not disable verification.
+    test: test_a_manifest_without_a_stored_hash_is_invalid
+
+  - id: FREEZE_IS_WRITE_ONCE
+    claim: An existing freeze cannot be replaced, and re-saving the same design does not rewrite its provenance.
+    test: test_resaving_the_same_design_does_not_rewrite_its_history
+
+  - id: FREEZE_HAS_NO_ESCAPE_HATCH
+    claim: There is no flag that permits replacing a freeze.
+    test: test_there_is_no_replace_escape_hatch
+
+  - id: FREEZE_REQUIRES_DATASET_IDENTITY
+    claim: A design cannot be frozen against unidentified data.
+    test: test_freezing_requires_a_dataset_hash
+
+  - id: LOCK_IS_A_HASH_NOT_A_LABEL
+    claim: The outcome lock is the freeze hash; editing the status string does not unlock a frozen design.
+    test: test_flipping_the_status_string_does_not_unlock_a_frozen_design
+
+  - id: DATASET_DRIFT_BLOCKS_ANALYSIS
+    claim: A frozen dataset that is missing or changed forbids analysis.
+    test: test_drifted_dataset_blocks
+
+  - id: RESCOPE_IS_PRE_FREEZE_ONLY
+    claim: Rescoping below the outcome lock is refused.
+    test: test_rescope_is_refused_below_the_outcome_lock
+
+  - id: RESCOPE_REJUDGES_NOVELTY_AND_POWER
+    claim: A rescoped study re-runs G2 and G4 rather than inheriting them.
+    test: test_rescope_forces_novelty_and_power_to_be_re_run
+
+  - id: ESSENTIAL_CONSTRUCTS_ARE_NEVER_DROPPED
+    claim: Only a construct explicitly marked OPTIONAL may be dropped during rescope.
+    test: test_an_essential_control_is_never_dropped_silently
+
+  - id: POWER_GATE_SEES_ONLY_PRE_PERIOD
+    claim: The power gate refuses any panel containing post-treatment rows.
+    test: test_post_treatment_rows_are_refused
+
+  - id: ENGINE_FAILURE_IS_NOT_SCIENTIFIC_FAILURE
+    claim: An input-contract failure returns BLOCKED and does not retire a candidate.
+    test: test_g4_blocks_rather_than_fails_on_leaked_data
+
+  - id: CHEAP_SCREEN_DOES_NOT_ADJUDICATE_CLOSE_CALLS
+    claim: G4 defers rather than killing inside the 3x margin.
+    test: test_g4_defers_rather_than_killing_inside_the_margin
+
+  - id: G3_EXHAUSTS_EXTERNAL_ROUTES
+    claim: Every concept-compatible external route is tried before the lake.
+    test: test_g3_switches_to_an_open_alternative_when_the_preferred_route_is_gated
+
+  - id: G3_BLOCKS_UNMAPPED_PRIMARY_CONSTRUCTS
+    claim: A primary construct with no usable source never returns PASS.
+    test: test_g3_does_not_pass_an_unmapped_primary_construct
+
+  - id: INADMISSIBLE_SOURCES_ARE_REFUSED
+    claim: Identity-gated and paid sources are never admissible.
+    test: test_identity_gated_and_paid_are_inadmissible
+
+  - id: SECRETS_ARE_NOT_A_SOURCE_CENSUS
+    claim: Admissible sources exist that carry no secret at all.
+    test: test_secrets_list_is_not_a_census_of_sources
+
+  - id: ARCHIVAL_RIGHTS_ARE_SEPARATE_FROM_ACCESS
+    claim: A source can be queryable and still not archivable.
+    test: test_archivable_requires_redistribution_rights
+
+  - id: RESULT_TOKENS_ARE_UNIQUE
+    claim: A result exists exactly once, in memory and on load.
+    test: test_duplicate_tokens_are_refused_when_loading_a_manifest
+
+  - id: FABRICATED_NUMBERS_FAIL
+    claim: A number in the manuscript with no result behind it fails the build.
+    test: test_a_fabricated_number_is_caught
+
+  - id: P_OPERATOR_IS_HONOURED
+    claim: A p-threshold is checked in the direction it was written.
+    test: test_p_operator_is_honoured_in_every_direction
+
+  - id: UNITS_GATE_NUMERIC_MATCHING
+    claim: A value from an incompatible unit family cannot validate a claim.
+    test: test_exact_match_across_incompatible_units_is_refused
+
+  - id: FIELD_TOKENS_BIND_STATISTICS_TO_RECORDS
+    claim: Every reported statistic can be cited by field, so association is written not inferred.
+    test: test_field_tokens_render_every_reported_statistic
+
+  - id: STRICT_MODE_IS_USABLE
+    claim: A fully tokenised manuscript passes strict mode.
+    test: test_a_fully_tokenised_manuscript_passes_strict_mode
+
+  - id: EVERY_MODULE_IMPORTS
+    claim: Every production module imports.
+    test: test_every_production_module_imports
+
+  - id: ONE_VERSION_SOURCE
+    claim: The package declares its version in exactly one place.
+    test: test_version_is_declared_in_exactly_one_place
+
+  - id: BUDGET_PERIODS_ARE_DISTINCT
+    claim: A study budget does not reset on a cycle boundary.
+    test: test_study_scope_does_not_reset_on_a_new_cycle
+
+  # ---- the analysis engine (v4.1.3) ----
+
+  - id: ANALYSIS_TRUNCATION_IS_DETECTED
+    claim: A script that dies partway leaves an unsealed stream, and the whole bundle is refused.
+    test: test_a_truncated_stream_refuses_the_whole_bundle
+
+  - id: INCOHERENT_STATISTICS_ARE_REFUSED
+    claim: An estimate outside its own interval, a negative SE or an out-of-range p is refused at emit time.
+    test: test_statistics_that_cannot_be_true_are_refused
+
+  - id: NON_FINITE_VALUES_ARE_REFUSED
+    claim: A NaN or infinite estimate is not a result and never enters the bundle.
+    test: test_non_finite_values_are_refused
+
+  - id: R_AND_PYTHON_AGREE
+    claim: The R emitter writes exactly what the Python collector reads, at full double precision.
+    test: test_the_r_emitter_writes_what_python_reads
+
+  - id: A_NAN_STANDARD_ERROR_IS_NEVER_DROPPED
+    claim: R refuses a NaN standard error rather than omitting it like an absent one.
+    test: test_r_refuses_a_nan_standard_error
+
+  - id: RESULTS_NAME_THE_CODE_THAT_MADE_THEM
+    claim: A result whose script was never hashed breaks the provenance chain and is refused.
+    test: test_a_result_whose_script_was_never_hashed_is_refused
+
+  - id: FIGURES_ARE_BOUND_TO_RESULTS
+    claim: A figure declares the results it depicts, and a figure bound to nothing is refused.
+    test: test_a_figure_bound_to_nothing_is_refused
+
+  - id: MANIFEST_TAMPERING_IS_DETECTED
+    claim: Editing anything in a written manifest, figures and provenance included, fails on load.
+    test: test_editing_anything_in_the_manifest_is_detected
+
+  - id: FETCH_IS_LIMITED_TO_FROZEN_DATA
+    claim: Acquisition downloads exactly the datasets the freeze names and nothing else in the folder.
+    test: test_fetch_retrieves_exactly_what_the_freeze_names
+
+  - id: R_CANNOT_READ_UNFROZEN_DATA
+    claim: An R script cannot load a dataset the freeze does not name, even if it is sitting alongside.
+    test: test_r_refuses_a_dataset_the_freeze_does_not_name
+
+  - id: RANDOMNESS_IS_DERIVED_FROM_THE_DESIGN
+    claim: The RNG seed is a function of the freeze hash, so a bootstrap cannot be reseeded until it agrees.
+    test: test_the_seed_is_a_function_of_the_design
+
+  - id: WORKFLOWS_ARE_VALID
+    claim: Every workflow parses as YAML and every run block parses as shell.
+    test: test_every_run_block_is_valid_shell
+
+  - id: RESEARCH_STATE_NEVER_ENTERS_GIT
+    claim: No workflow commits results, reports, data or designs to the repository.
+    test: test_no_workflow_commits_research_state_to_git
+
+  - id: ANALYSIS_STAGES_RUN_IN_ORDER
+    claim: Fetch precedes verification, verification precedes analysis, and collection precedes the prose check.
+    test: test_analysis_runs_its_stages_in_the_only_safe_order
+
+  - id: STRICT_MODE_HAS_NO_ESCAPE_HATCH
+    claim: The literal escape is forbidden in strict mode, so there is no documented way around provenance.
+    test: test_strict_mode_forbids_the_literal_escape_hatch
+
+  - id: G3_CHECKS_SUITABILITY_NOT_JUST_REACHABILITY
+    claim: A source that responds but has the wrong granularity or coverage is not a usable route.
+    test: test_g3_rejects_a_reachable_source_that_does_not_fit
+
+  - id: FROZEN_DESIGNS_ARE_NOT_REROUTED
+    claim: A gate cannot substitute a data source on a frozen candidate.
+    test: test_g3_will_not_reroute_a_frozen_candidate
+
+  - id: BUDGET_SCOPE_IS_ENFORCED_AT_THE_CALLER
+    claim: The budget CLI passes a study id through, so the per-paper ceiling does not reset each cycle.
+    test: test_the_budget_cli_passes_the_study_through
+
+  # ---- execution integrity (v4.1.4) ----
+  #
+  # The theme of this round: the engine could prove a result was REPRODUCIBLE
+  # and was describing that as though it were PRE-SPECIFIED. Script hashes taken
+  # at collection time say "this code made this number"; they cannot say "this
+  # code existed before anyone saw the number". Only the second supports a
+  # confirmatory claim.
+
+  - id: ANALYSIS_CODE_IS_PRE_SPECIFIED
+    claim: Analysis code is locked before outcome access, and an edited script fails verification.
+    test: test_an_edited_script_fails_verification
+
+  - id: NEW_SCRIPTS_CANNOT_JOIN_AFTER_THE_LOCK
+    claim: A script added after the lock fails verification alongside the ones that were locked.
+    test: test_a_script_added_after_the_lock_fails_verification
+
+  - id: ANALYSIS_LOCK_IS_WRITE_ONCE
+    claim: An analysis lock cannot be rewritten once outcomes could have been seen.
+    test: test_the_lock_is_write_once
+
+  - id: ANALYSIS_LOCK_REQUIRES_ITS_HASH
+    claim: A lock with no stored hash is invalid; deleting the checksum does not disable verification.
+    test: test_a_lock_without_its_hash_is_invalid
+
+  - id: ENVIRONMENT_IS_LOCKED_WITH_THE_CODE
+    claim: A changed renv.lock or pyproject fails verification, because code without its environment is half a claim.
+    test: test_a_changed_environment_fails_verification
+
+  - id: UNSANCTIONED_IO_IS_DECLARED
+    claim: Direct reads, network calls and reseeding are found and must be acknowledged into the lock.
+    test: test_unsanctioned_reads_block_the_lock_until_declared
+
+  - id: MANIFEST_REQUIRES_ITS_INTEGRITY_HASHES
+    claim: A results manifest missing either integrity hash is refused rather than trusted.
+    test: test_a_manifest_stripped_of_its_integrity_hashes_is_refused
+
+  - id: ONLY_VERIFIED_RESULTS_ARE_PUBLISHED
+    claim: The authoritative Drive folder receives collected, provenance-passed output or nothing.
+    test: test_only_verified_results_reach_the_authoritative_folder
+
+  - id: FAILED_RUNS_ARE_QUARANTINED
+    claim: A failed run leaves diagnostics under a name nobody could mistake for a result.
+    test: test_failed_runs_are_kept_but_quarantined
+
+  - id: SCRIPT_IDENTITY_COMES_FROM_THE_RUNNER
+    claim: A result cannot attribute itself to a script that did not produce it.
+    test: test_a_stream_cannot_attribute_itself_to_another_script
+
+  - id: LARGE_DATASETS_ARE_STREAMED
+    claim: A dataset is hashed and written in chunks, so the acquisition ceiling is not bounded by RAM.
+    test: test_a_large_file_is_never_held_in_memory
+
+  - id: DRIVE_LISTING_IS_COMPLETE
+    claim: Folder listing follows pagination, so a dataset on page two is not reported as absent.
+    test: test_listing_follows_pagination
+
+  - id: DUPLICATE_NAMES_RESOLVE_BY_CONTENT
+    claim: Where Drive holds duplicate filenames, the file matching the frozen bytes is the one used.
+    test: test_duplicate_names_are_resolved_by_content
+
+  - id: FROZEN_CANDIDATES_ARE_IMMUTABLE
+    claim: Scientific fields of a frozen candidate cannot be changed, not merely its freeze marker.
+    test: test_a_frozen_candidate_cannot_be_edited
+
+  - id: SEALING_REACHES_THE_CONSTRUCTS
+    claim: A frozen candidate's constructs cannot be edited around it.
+    test: test_sealing_reaches_the_constructs
+
+  - id: CANDIDATE_AND_FREEZE_DESCRIBE_ONE_STUDY
+    claim: Treatment, outcome and controls must agree between a candidate and its freeze, not only question and design.
+    test: test_a_candidate_and_its_freeze_must_describe_one_study
+
+  - id: PROSE_AND_CITATION_MUST_AGREE
+    claim: Where the prose names the statistic outright, the citation must cite that field.
+    test: test_the_prose_cannot_name_one_statistic_and_cite_another
+
+  - id: STRICT_MODE_FORBIDS_THE_ALLOW_LIST
+    claim: Strict mode has one exception mechanism, the literal registry; the allow-list is refused.
+    test: test_strict_mode_forbids_the_allow_list
+
+  - id: ONE_DEFINITION_OF_WHAT_RUNS
+    claim: The execution plan is computed once and read by the workflow, not duplicated as a shell glob.
+    test: test_the_execution_plan_is_the_numbered_scripts_in_order
+
+  # ---- execution-integrity closure (v4.1.5) ----
+
+  - id: STUDY_STATE_BOOTSTRAPS_BEFORE_OUTCOMES
+    claim: A clean runner retrieves the write-once design freeze and analysis lock from Drive before any outcome data are fetched.
+    test: test_analysis_runs_its_stages_in_the_only_safe_order
+
+  - id: ANALYSIS_LOCK_IS_VERIFIED_BEFORE_OUTCOME_ACCESS
+    claim: The repository code and execution plan are verified against the analysis lock before the workflow downloads outcome bytes.
+    test: test_the_analysis_verifies_its_code_lock_before_running_anything
+
+  - id: FROZEN_SCIENTIFIC_CONTAINERS_ARE_IMMUTABLE
+    claim: Freezing converts candidate constructs and construct concepts to immutable containers, closing append/pop mutation paths.
+    test: test_freeze_converts_scientific_containers_to_immutable_tuples
+
+  - id: PYTHON_SCRIPT_IDENTITY_COMES_FROM_THE_RUNNER
+    claim: Python result provenance is runner-derived and study code cannot attribute a result to a different script.
+    test: test_python_emitter_identity_comes_from_runner
+
+  - id: STREAM_PRODUCER_WITNESSES_AGREE
+    claim: Stream filename, every record, and the completion sentinel must identify the same producing script.
+    test: test_completion_sentinel_must_agree_with_record_and_filename
+
+  - id: ACTUAL_EXECUTION_PLAN_IS_LOCKED
+    claim: The lock stores and re-verifies the actual numbered R/Python execution plan in global numeric order while Stan remains a hashed model input.
+    test: test_analysis_lock_stores_and_verifies_the_actual_execution_plan
+
+  - id: ANALYSIS_LOCK_RECEIPT_IS_TAMPER_EVIDENT
+    claim: Lock timestamp and engine-version provenance are covered by a receipt hash distinct from the stable scientific lock hash.
+    test: test_analysis_lock_receipt_protects_timestamp_and_version
+
+  - id: DRIVE_PUBLISH_REQUIRES_COMPLETION_MARKER
+    claim: A Drive run becomes authoritative only after every file uploads and _COMPLETE.json is written last.
+    test: test_publish_writes_completion_marker_last
+
+  - id: UNKNOWN_SOURCE_SUITABILITY_IS_NOT_ASSUMED
+    claim: Missing granularity or coverage metadata for an essential construct produces DEFER rather than being treated as compatible.
+    test: test_g3_defers_when_essential_source_suitability_is_unknown
+
+  - id: ANALYSIS_VERIFY_REQUIRES_DESIGN_FREEZE
+    claim: An analysis lock cannot verify successfully when the design freeze it binds to is missing.
+    test: test_analysis_verify_fails_closed_when_design_freeze_is_missing

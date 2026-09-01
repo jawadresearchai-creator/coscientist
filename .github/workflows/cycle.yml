@@ -1,0 +1,96 @@
+# The deterministic cycle.
+#
+# No LLM is invoked anywhere in this workflow. It runs the gauntlet, reports
+# the judgment queue, and stops only if a BLOCKING ticket is open -- which by
+# design means exactly one thing: a pre-freeze audit that has not happened.
+
+name: cycle
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      cycle:
+        description: Cycle identifier
+        required: false
+        default: cycle-001
+
+permissions:
+  contents: write
+
+# Scheduled and manual runs can otherwise overlap and race each other over
+# engine.json, the ticket directory and the ledger. Atomic writes stop a file
+# being half-written; they do not stop two runs interleaving decisions.
+# Queue rather than cancel: a half-finished cycle should complete, not be shot.
+concurrency:
+  group: coscientist-cycle
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Refresh GMS lake catalog
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GMSDL_MANIFEST_FOLDER_ID: ${{ secrets.GMSDL_MANIFEST_FOLDER_ID }}
+          GMSDL_GITHUB_REPO: ${{ vars.GMSDL_GITHUB_REPO }}
+          GMSDL_GITHUB_TOKEN: ${{ secrets.GMSDL_GITHUB_TOKEN }}
+        run: |
+          coscientist lake-sync --out state/gms_lake_catalog.json
+          coscientist lake-doctor --catalog state/gms_lake_catalog.json
+
+      - name: Engine status
+        run: coscientist status
+
+      - name: Judgment queue digest
+        run: coscientist tickets
+
+      # `exit 0` ends the STEP successfully and the job carries straight on --
+      # which was harmless only because nothing followed. Emit an output and
+      # gate the later steps on it instead.
+      - name: Check for blocking tickets
+        id: blockcheck
+        run: |
+          if coscientist tickets | grep -q "^BLOCKING"; then
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Blocked on a pre-freeze audit. This is intentional:"
+            echo "::warning::freezing an unaudited design cannot be repaired later."
+          else
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+            echo "No blocking tickets. Core is runnable."
+          fi
+
+      - name: Run the deterministic stages
+        if: steps.blockcheck.outputs.blocked != 'true'
+        run: |
+          echo "Orchestrator entry point. Gated on the blocking check above."
+          coscientist status
+
+      # Research state -- candidates, freezes, manuscripts -- belongs in Drive,
+      # never in git. Only the operational heartbeat is committed here: budget
+      # accounting and the run pointer. Committing scientific state to a repo
+      # that may become public is how an unsubmitted design leaks.
+      - name: Persist operational heartbeat
+        run: |
+          git config user.name  "coscientist-bot"
+          git config user.email "${{ secrets.CONTACT_EMAIL }}"
+          git add -f state/budget.json state/heartbeat.json 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "cycle: heartbeat $(date -u +%FT%TZ)"
+          git push || echo "nothing to push"

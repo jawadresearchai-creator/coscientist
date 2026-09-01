@@ -1,0 +1,15 @@
+# No secrets belong here. Values are supplied by GitHub Actions variables/secrets.
+gms:
+  github_repo_env: GMSDL_GITHUB_REPO
+  github_token_env: GMSDL_GITHUB_TOKEN        # optional read-only token
+  drive_root_folder_env: GMSDL_DRIVE_ROOT_FOLDER_ID
+  manifest_folder_env: GMSDL_MANIFEST_FOLDER_ID
+  catalog_path: state/gms_lake_catalog.json
+  direct_fetch_limit_bytes: 2000000000
+  query_first: true
+  raw_openalex_direct_fetch: false
+
+coscientist_drive:
+  state_folder_env: GDRIVE_STATE_FOLDER_ID
+  confirmatory_results_folder_env: GDRIVE_RESULTS_FOLDER_ID
+  exploratory_results_folder_env: GDRIVE_DEVELOPMENT_RESULTS_FOLDER_ID

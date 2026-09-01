@@ -1,0 +1,27 @@
+# Literal registry: numbers a manuscript legitimately states that no analysis
+# produced. Cited as [[L:id]], and strict mode refuses any id not listed here.
+#
+# This exists because {{lit:999.9}} was an unrestricted escape from the whole
+# provenance system. A number without provenance is not made acceptable by
+# wrapping it; it is made acceptable by stating where it came from.
+
+alpha_005:
+  value: 0.05
+  type: analysis_policy
+  reason: prespecified two-sided significance level
+
+confidence_95:
+  value: 95
+  type: reporting_convention
+  reason: conventional confidence level for reported intervals
+
+power_080:
+  value: 0.80
+  type: analysis_policy
+  reason: target power for the frozen design
+
+uspto_maintenance_stages:
+  value: 3.5
+  type: institutional_fact
+  reason: USPTO first maintenance window, years after grant
+  source: https://www.uspto.gov/patents/maintain

@@ -1,0 +1,19 @@
+# Standing approval policy for judgment tickets.
+#
+# Set once, so quota spending is governed by policy rather than by dozens of
+# interruptions. The slate approval stays a separate, scientific gate: this
+# file governs the economic one only.
+#
+#   auto   spend without asking, when quota and budget allow
+#   ask    collect into the next checkpoint digest
+#   never  never spend; always apply the ticket's declared default
+
+default: ask
+
+tickets:
+  build_repair:          auto   # Codex fixing a broken run; cheap, verifiable, high value
+  novelty_verdict:       ask
+  candidate_generation:  ask    # bursty by nature; stock the queue when convenient
+  pre_freeze_audit:      ask    # BLOCKING -- has no safe default, engine waits
+  manuscript_prose:      ask
+  reviewer_court:        ask

@@ -1,0 +1,286 @@
+# S5 -- the reproducible analysis engine, and the S6 handoff.
+#
+# The chain this workflow enforces, in this order and no other:
+#
+#   Drive state -> analysis-lock verify -> frozen datasets -> freeze-verify
+#         -> R/Python drivers (+ locked Stan models) -> streams -> collect
+#         -> bridge -> strict provenance -> transactional Drive publish
+#
+# Two rules govern every step.
+#
+# DATA AND RESULTS LIVE IN DRIVE, NEVER IN GIT. The previous version of this
+# workflow ended with `git add -f results/manuscript/`, which contradicted the
+# rule the rest of the system is built on and would have published an
+# unsubmitted finding the day this repository went public. Outputs go back to
+# Drive and to a short-retention artifact; the repository holds code.
+#
+# ANALYSIS RUNS ONLY AGAINST A VERIFIED FREEZE. Every gate below exits non-zero
+# rather than warning, because a warning in a 40-minute job is a line of log
+# nobody reads.
+#
+# Runner note: a PUBLIC repository gets 4 vCPU / 16 GB and unlimited minutes; a
+# private one gets 2 vCPU / 8 GB and a metered allowance. Larger runners need a
+# card on file. Disk is 14 GB either way, and that -- not RAM -- is what a panel
+# build hits first.
+
+name: analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      study:
+        description: Study identifier
+        required: true
+        default: C705
+      strict_provenance:
+        description: Require every result claim to cite a token
+        type: boolean
+        default: true
+
+permissions:
+  contents: read          # this job writes nothing to the repository
+
+concurrency:
+  group: coscientist-analysis-${{ github.event.inputs.study || 'default' }}
+  cancel-in-progress: false
+
+env:
+  COSCIENTIST_FREEZE: state/freeze.json
+  COSCIENTIST_DATA_DIR: data
+  COSCIENTIST_RESULTS_DIR: results/streams
+  COSCIENTIST_FIGURE_DIR: results/figures
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install engine
+        run: pip install -e ".[dev]"
+
+      # Scientific state is deliberately git-ignored.  A clean runner first
+      # retrieves the write-once design freeze and analysis lock from the
+      # study's Drive state folder.  This is state, not outcome data.
+      - name: Bootstrap immutable study state from Drive
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
+        run: |
+          coscientist state-fetch \
+            --study "${{ github.event.inputs.study }}" \
+            --dest state --folder "$GDRIVE_STATE_FOLDER_ID"
+
+      # The analysis plan is checked BEFORE outcome access.  Verifying it only
+      # after Drive downloads would prevent edited code from executing, but it
+      # would already have crossed the confirmatory information boundary.
+      - name: Verify analysis lock before outcome access
+        run: |
+          coscientist analysis-verify \
+            --lock state/analysis_lock.json \
+            --freeze state/freeze.json --root .
+
+      # The lock is the reproducibility claim. Without it the job would install
+      # whatever CRAN serves today, and "reproducible" would mean "ran once".
+      - name: Require the R lock
+        run: |
+          test -f renv.lock || {
+            echo "::error::renv.lock is missing. Generate it once with"
+            echo "::error::  Rscript R/dependencies.R --install && Rscript -e 'renv::snapshot()'"
+            echo "::error::then commit it. Analysis without a lock is not reproducible."
+            exit 1
+          }
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-renv@v2
+
+      # Stan compilation is deterministic and expensive; never pay for it twice.
+      - name: Cache CmdStan
+        uses: actions/cache@v4
+        with:
+          path: ~/.cmdstan
+          key: cmdstan-${{ runner.os }}-${{ hashFiles('renv.lock') }}
+
+      # ---------------------------------------------------------------------
+      # 1. Acquire. Exactly the datasets the freeze names, hashed on arrival.
+      # ---------------------------------------------------------------------
+      - name: Refresh GMS lake catalog from control manifests
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GMSDL_MANIFEST_FOLDER_ID: ${{ secrets.GMSDL_MANIFEST_FOLDER_ID }}
+          GMSDL_GITHUB_REPO: ${{ vars.GMSDL_GITHUB_REPO }}
+          GMSDL_GITHUB_TOKEN: ${{ secrets.GMSDL_GITHUB_TOKEN }}
+        run: |
+          coscientist lake-sync --out state/gms_lake_catalog.json
+          coscientist lake-doctor --catalog state/gms_lake_catalog.json
+
+      - name: Fetch only the frozen GMS objects
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GMSDL_DRIVE_ROOT_FOLDER_ID: ${{ secrets.GMSDL_DRIVE_ROOT_FOLDER_ID }}
+        run: |
+          coscientist gms-fetch --manifest state/freeze.json \
+            --catalog state/gms_lake_catalog.json --dest data
+
+      # ---------------------------------------------------------------------
+      # 2. Verify. Exits 2 on any dataset MISSING, DRIFTED or UNREADABLE.
+      # ---------------------------------------------------------------------
+      - name: Verify frozen datasets
+        run: coscientist freeze-verify --manifest state/freeze.json --data-dir data
+
+      # ---------------------------------------------------------------------
+      # 3. The analysis lock was already verified before any outcome bytes were
+      #    fetched. Dataset verification above now closes the second half of the
+      #    boundary: both code and data are exactly what was pre-specified.
+      # ---------------------------------------------------------------------
+
+      # ---------------------------------------------------------------------
+      # 4. Analyse. Every script sources 00_setup.R and emit.R; a script that
+      #    dies leaves its stream unsealed, and step 5 refuses the whole run.
+      #
+      #    COSCIENTIST_CURRENT_SCRIPT is what makes provenance the runner's
+      #    identity rather than a string the script chooses. Without it a
+      #    record could name any other real, hashed script as its producer and
+      #    pass every check.
+      # ---------------------------------------------------------------------
+      # `coscientist plan` decides what runs, not a shell glob here. Two
+      # definitions of "what to execute" drift, and the one that drifted would
+      # be the one deciding what actually ran -- the engine's own `00_setup.R`
+      # matches `R/[0-9][0-9]_*.R` and was being listed as an analysis stage.
+      #
+      # Python is a first-class runner, not merely a hashed language. Stan is
+      # deliberately NOT given its own loop: a .stan file is a model, not an
+      # analysis -- it has no data and no sampling configuration -- so it is
+      # invoked from a locked R or Python driver and hashed as part of the lock.
+      - name: Run the analysis
+        run: |
+          set -euo pipefail
+          coscientist plan --root . > /tmp/plan.txt
+          if [ ! -s /tmp/plan.txt ]; then
+            echo "::error::the analysis plan is empty"
+            exit 1
+          fi
+          while read -r s; do
+            echo "::group::$s"
+            case "$s" in
+              *.R)  COSCIENTIST_CURRENT_SCRIPT="$s" Rscript "$s" ;;
+              *.py) COSCIENTIST_CURRENT_SCRIPT="$s" python  "$s" ;;
+              *)    echo "::error::no runner for $s"; exit 1 ;;
+            esac
+            echo "::endgroup::"
+          done < /tmp/plan.txt
+
+      # ---------------------------------------------------------------------
+      # 5. Collect. Streams become the bridge, or the run stops here. An
+      #    unsealed stream, a figure bound to nothing, a token emitted twice,
+      #    a script that was never hashed, a stream attributing itself to a
+      #    different script: each exits 2.
+      # ---------------------------------------------------------------------
+      - name: Assemble the manuscript bridge
+        run: |
+          coscientist collect \
+            --streams results/streams \
+            --out results/manuscript \
+            --manifest state/freeze.json \
+            --lock state/analysis_lock.json \
+            --root .
+
+      # ---------------------------------------------------------------------
+      # 6. Provenance. Every number in the prose must exist in the results.
+      # ---------------------------------------------------------------------
+      - name: Numeric provenance check
+        run: |
+          if [ ! -f reports/manuscript.md ]; then
+            echo "no manuscript yet; the bridge is built and provenance will run on the next pass"
+            exit 0
+          fi
+          STRICT=""
+          if [ "${{ github.event.inputs.strict_provenance }}" != "false" ]; then
+            STRICT="--require-tokens"
+          fi
+          coscientist provenance reports/manuscript.md $STRICT \
+            --results results/manuscript/ANALYSIS_MANIFEST.json \
+            --freeze state/freeze.json
+
+      # ---------------------------------------------------------------------
+      # 7. Deliver -- ONLY what passed. To Drive, and to a short-retention
+      #    artifact. Never to git.
+      #
+      #    This step used to carry `if: always()`. So when an R script died
+      #    halfway, the collector correctly refused the incomplete analysis and
+      #    the job failed -- and then this step uploaded the partial streams and
+      #    half-drawn figures to the authoritative results folder anyway,
+      #    undoing the stream-sealing architecture two steps above it. The
+      #    authoritative destination receives verified, collected,
+      #    provenance-passed output or it receives nothing.
+      # ---------------------------------------------------------------------
+      - name: Publish verified confirmatory results to Drive
+        if: success() && github.event.inputs.strict_provenance != 'false'
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_RESULTS_FOLDER_ID: ${{ secrets.GDRIVE_RESULTS_FOLDER_ID }}
+        run: |
+          coscientist publish --dir results --folder "$GDRIVE_RESULTS_FOLDER_ID" \
+            --study "${{ github.event.inputs.study }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}" \
+            --mode confirmatory
+
+      # Loose provenance is useful during development but must never share the
+      # authoritative confirmatory destination.
+      - name: Publish exploratory development results to Drive
+        if: success() && github.event.inputs.strict_provenance == 'false'
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_DEVELOPMENT_RESULTS_FOLDER_ID: ${{ secrets.GDRIVE_DEVELOPMENT_RESULTS_FOLDER_ID }}
+        run: |
+          coscientist publish --dir results --folder "$GDRIVE_DEVELOPMENT_RESULTS_FOLDER_ID" \
+            --study "${{ github.event.inputs.study }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}" \
+            --mode exploratory
+
+      # Debugging still needs the wreckage, so it goes to a 14-day artifact
+      # under a name that says what it is. Nothing a reader could mistake for a
+      # result reaches the authoritative folder.
+      - name: Upload diagnostics from a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAILED-RUN-${{ github.event.inputs.study || 'run' }}-${{ github.run_id }}
+          path: |
+            results/
+            !results/**/*.rds
+          retention-days: 14
+
+      - name: Upload verified run artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-${{ github.event.inputs.study || 'run' }}
+          path: |
+            results/
+            !results/**/*.rds
+          retention-days: 14
+
+      # The data must not survive the runner. Cleanup on a self-hosted runner
+      # is not optional, and being explicit here means the same workflow is
+      # safe if this ever moves off GitHub-hosted machines.
+      - name: Shred the fetched data
+        if: always()
+        run: rm -rf data

@@ -1,0 +1,178 @@
+# CoScientist source registry -- the single source of truth about reachable data.
+#
+# This file exists because a credentials list was once mistaken for a census of
+# sources. Every OPEN-class source needs no secret and so appears in no secrets
+# list. Enumerate everything here, secret or not.
+#
+# access_class:
+#   OPEN            no account, no key
+#   HELD            keyed, and the key is already in Actions secrets
+#   KEYED_NEW       free key, needs a fresh application  (inadmissible by default)
+#   IDENTITY_GATED  ID proofing / residency / video       (never admissible)
+#   PAID            any charge or credit balance          (never admissible)
+#
+# redistributable: may the lake ARCHIVE and redistribute this? Licensing for
+# archival is stricter than licensing for query -- screen on this first.
+
+sources:
+  - id: SEC_BULK
+    name: SEC EDGAR XBRL company facts
+    access_class: OPEN
+    redistributable: true
+    url: https://data.sec.gov/api/xbrl/companyfacts/
+    concepts: [firm_fundamentals, revenue, assets, liabilities, equity, cash_flow, shares_outstanding]
+    granularity: firm-quarter
+    coverage_start: "2009-01-01"
+    licence: US government work, public domain
+    notes: >
+      No API key. SEC asks for a contact email in the User-Agent header;
+      CONTACT_EMAIL already exists as a secret for exactly this.
+
+  - id: SEC_FINANCIAL_STATEMENT_SETS
+    name: SEC DERA Financial Statement Data Sets
+    access_class: OPEN
+    redistributable: true
+    url: https://www.sec.gov/data-research/sec-markets-data/financial-statement-data-sets
+    concepts: [firm_fundamentals, income_statement, balance_sheet, cash_flow]
+    granularity: firm-quarter
+    coverage_start: "2009-01-01"
+    licence: US government work, public domain
+    notes: 73 quarterly ZIPs, 57-122 MB each for recent quarters.
+
+  - id: FAMA_FRENCH
+    name: Fama-French factors and portfolios
+    access_class: OPEN
+    redistributable: true
+    concepts: [factor_returns, benchmark_returns, market_return, size, value, momentum]
+    granularity: portfolio-day
+    coverage_start: "1926-07-01"
+    licence: free academic use
+    notes: Benchmark side of an event study without CRSP.
+
+  - id: CBOE_VOL
+    name: CBOE VIX / VIX9D / VVIX history
+    access_class: OPEN
+    redistributable: true
+    concepts: [volatility, uncertainty, vix, term_structure]
+    granularity: index-day
+    coverage_start: "1990-01-02"
+
+  - id: CFTC_COT
+    name: CFTC Commitments of Traders
+    access_class: OPEN
+    redistributable: true
+    concepts: [positioning, futures, trader_category, speculative_positions]
+    granularity: contract-week
+
+  - id: FINRA_SHORT
+    name: FINRA daily short-sale volume
+    access_class: OPEN
+    redistributable: true
+    concepts: [short_volume, trading_activity, short_selling]
+    granularity: security-day
+
+  - id: NASDAQ_SYMBOLS
+    name: Nasdaq security and symbol identifiers
+    access_class: OPEN
+    redistributable: true
+    concepts: [security_identifier, ticker, listing_status]
+    granularity: security
+    notes: Partial crosswalk material for the ownership layer.
+
+  - id: EPO_INPADOC
+    name: EPO Worldwide Legal Event Data (INPADOC)
+    access_class: OPEN
+    redistributable: true
+    url: https://publication-bdds.apps.epo.org/
+    concepts: [patent_legal_event, maintenance_fee, lapse, reinstatement, expiration]
+    granularity: patent-event
+    licence: EPO open data, public area
+    notes: >
+      Free bulk since 2025-02-17, no authentication. The route to patent
+      maintenance outcomes after USPTO's own bulk hosts were retired.
+
+  - id: PATENTSVIEW_S3
+    name: PatentsView bulk tables
+    access_class: OPEN
+    redistributable: true
+    url: https://s3.amazonaws.com/data.patentsview.org/download/
+    concepts: [patent, cpc_at_issue, ipc_at_issue, assignee, application, term_of_grant]
+    granularity: patent
+    licence: CC BY
+
+  - id: BIGQUERY_PUBLIC
+    name: Google BigQuery public datasets
+    access_class: HELD
+    redistributable: true
+    platform: true      # many datasets, many licences; it cannot speak for them
+    secret_names: [GCP_BIGQUERY_PROJECT_ID, GCP_OAUTH_CLIENT_ID, GCP_OAUTH_CLIENT_SECRET, GCP_OAUTH_REFRESH_TOKEN]
+    concepts: [patent, publication, census, world_bank, gdelt, usa_spending]
+    notes: >
+      Route zero. Returns rows rather than moving files, which sidesteps the
+      transport failures that defined this project. Bills by bytes scanned --
+      every query must dry-run first (see bq.py) and the GCP project must
+      carry a query cap.
+
+  - id: GDRIVE
+    name: Google Drive (lake storage and engine state)
+    access_class: HELD
+    redistributable: true
+    secret_names: [GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET, GDRIVE_TOKEN, GDRIVE_ROOT_FOLDER_ID]
+    concepts: [storage, provenance, state]
+
+  - id: CENSUS
+    name: US Census APIs
+    access_class: HELD
+    redistributable: true
+    secret_names: [CENSUS_API_KEY]
+    concepts: [demographics, establishments, business_dynamics, county_business_patterns]
+
+  - id: EIA
+    name: US Energy Information Administration
+    access_class: HELD
+    redistributable: true
+    secret_names: [EIA_API_KEY]
+    concepts: [energy, electricity, fuel_prices, consumption, generation]
+
+  - id: COMTRADE
+    name: UN Comtrade
+    access_class: HELD
+    redistributable: false
+    secret_names: [COMTRADE_API_KEY]
+    concepts: [trade_flows, imports, exports, bilateral_trade]
+    notes: Check redistribution terms before archiving derived extracts.
+
+  - id: WTO
+    name: WTO timeseries
+    access_class: HELD
+    redistributable: true
+    secret_names: [WTO_API_KEY]
+    concepts: [tariffs, trade_policy, disputes]
+
+  - id: ACLED
+    name: ACLED conflict events
+    access_class: HELD
+    redistributable: false
+    secret_names: [ACLED_USERNAME, ACLED_PASSWORD]
+    concepts: [conflict, protest, political_violence, georeferenced_events]
+    notes: Licence restricts redistribution; archive derived aggregates only.
+
+  # --- Inadmissible, recorded so the engine never rediscovers them ---
+  - id: USPTO_ODP
+    name: USPTO Open Data Portal
+    access_class: IDENTITY_GATED
+    redistributable: true
+    url: https://data.uspto.gov/
+    concepts: [patent_maintenance_fee, patent_legal_status]
+    notes: >
+      Requires identity verification oriented to US persons, with an approval
+      queue. Permanently unavailable to an autonomous engine. Use EPO_INPADOC.
+
+  - id: CRSP
+    name: CRSP security returns
+    access_class: PAID
+    redistributable: false
+    concepts: [security_price, returns, delisting_returns, survivorship_free]
+    notes: >
+      The canonical security-price master. Recorded here so G3 can explain
+      precisely why long-horizon return designs are inadmissible.

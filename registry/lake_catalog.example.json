@@ -1,0 +1,84 @@
+{
+  "_comment": "Replace with a live export from the gms-data-lake catalog. Licence attaches per dataset: a delivery platform such as BigQuery carries many datasets under different terms, so the platform cannot hold one.",
+  "datasets": [
+    {
+      "id": "SEC_FUNDAMENTALS_QUARTERLY",
+      "domain": "finance",
+      "concepts": [
+        "firm_fundamentals",
+        "revenue",
+        "assets",
+        "liabilities",
+        "equity",
+        "cash_flow"
+      ],
+      "granularity": "firm-quarter",
+      "coverage_start": "2009-01-01",
+      "coverage_end": "2026-06-30",
+      "keys": [
+        "cik",
+        "period"
+      ],
+      "source_id": "SEC_FINANCIAL_STATEMENT_SETS",
+      "licence": "US government work, public domain",
+      "archive_policy": "RAW"
+    },
+    {
+      "id": "PATENT_GRANTS",
+      "domain": "innovation",
+      "concepts": [
+        "patent",
+        "cpc_at_issue",
+        "ipc_at_issue",
+        "assignee"
+      ],
+      "granularity": "patent",
+      "coverage_start": "1976-01-01",
+      "coverage_end": "2025-12-31",
+      "keys": [
+        "patent_id"
+      ],
+      "source_id": "PATENTSVIEW_S3",
+      "licence": "CC BY 4.0",
+      "archive_policy": "RAW"
+    },
+    {
+      "id": "PATENT_LEGAL_EVENTS",
+      "domain": "innovation",
+      "concepts": [
+        "patent_legal_event",
+        "maintenance_fee",
+        "lapse",
+        "reinstatement"
+      ],
+      "granularity": "patent-event",
+      "coverage_start": "1978-01-01",
+      "coverage_end": "2026-08-01",
+      "keys": [
+        "patent_id",
+        "event_date"
+      ],
+      "source_id": "EPO_INPADOC",
+      "licence": "EPO open data",
+      "archive_policy": "RAW"
+    },
+    {
+      "id": "FF_FACTORS_DAILY",
+      "domain": "finance",
+      "concepts": [
+        "factor_returns",
+        "benchmark_returns",
+        "market_return"
+      ],
+      "granularity": "portfolio-day",
+      "coverage_start": "1926-07-01",
+      "coverage_end": "2026-07-31",
+      "keys": [
+        "date"
+      ],
+      "source_id": "FAMA_FRENCH",
+      "licence": "free academic use",
+      "archive_policy": "DERIVED"
+    }
+  ]
+}
