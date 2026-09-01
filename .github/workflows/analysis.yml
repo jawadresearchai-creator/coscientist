@@ -3,7 +3,7 @@
 # The chain this workflow enforces, in this order and no other:
 #
 #   Drive state -> analysis-lock verify -> frozen datasets -> freeze-verify
-#         -> R/Python drivers (+ locked Stan models) -> streams -> collect
+#         -> locked R/Python/Stan drivers -> streams -> collect
 #         -> bridge -> strict provenance -> transactional Drive publish
 #
 # Two rules govern every step.
@@ -62,12 +62,34 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install engine
-        run: pip install -e ".[dev]"
+      # Keep the production runner on the same compiled-system substrate that
+      # the heavy CI capability check validates. Once renv.lock exists, R
+      # package versions are restored exactly; these are only their OS-level
+      # build/runtime prerequisites.
+      - name: Install system libraries for scientific computing
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gfortran cmake ninja-build pkg-config \
+            libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev \
+            libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
+            libfreetype6-dev libpng-dev libtiff-dev libjpeg-dev \
+            libgdal-dev libgeos-dev libproj-dev libudunits2-dev \
+            libopenblas-dev liblapack-dev libglpk-dev libgmp3-dev \
+            jq sqlite3
 
-      # Scientific state is deliberately git-ignored.  A clean runner first
+      # Production analysis must have the same Python capability surface as the
+      # scientific-toolchain validation job, not the small governance kernel
+      # alone. The exact Python freeze is promoted after the validation run;
+      # until then the declared analysis extra is the executable contract.
+      - name: Install engine and advanced Python analysis stack
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          pip install -e ".[dev,analysis]"
+
+      # Scientific state is deliberately git-ignored. A clean runner first
       # retrieves the write-once design freeze and analysis lock from the
-      # study's Drive state folder.  This is state, not outcome data.
+      # study's Drive state folder. This is state, not outcome data.
       - name: Bootstrap immutable study state from Drive
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
@@ -79,7 +101,7 @@ jobs:
             --study "${{ github.event.inputs.study }}" \
             --dest state --folder "$GDRIVE_STATE_FOLDER_ID"
 
-      # The analysis plan is checked BEFORE outcome access.  Verifying it only
+      # The analysis plan is checked BEFORE outcome access. Verifying it only
       # after Drive downloads would prevent edited code from executing, but it
       # would already have crossed the confirmatory information boundary.
       - name: Verify analysis lock before outcome access
@@ -94,13 +116,14 @@ jobs:
         run: |
           test -f renv.lock || {
             echo "::error::renv.lock is missing. Generate it once with"
-            echo "::error::  Rscript R/dependencies.R --install && Rscript -e 'renv::snapshot()'"
+            echo "::error::  Rscript R/dependencies.R --install && Rscript -e 'renv::snapshot(prompt = FALSE)'"
             echo "::error::then commit it. Analysis without a lock is not reproducible."
             exit 1
           }
 
       - uses: r-lib/actions/setup-r@v2
         with:
+          r-version: "4.6.1"
           use-public-rspm: true
 
       - uses: r-lib/actions/setup-renv@v2
@@ -111,6 +134,29 @@ jobs:
         with:
           path: ~/.cmdstan
           key: cmdstan-${{ runner.os }}-${{ hashFiles('renv.lock') }}
+
+      # cmdstanr is an R package; CmdStan itself is a separate toolchain. Merely
+      # restoring renv.lock does not install the compiler target. Validate and
+      # install it before any frozen driver can request sampling.
+      - name: Install and verify CmdStan
+        run: |
+          Rscript - <<'RS'
+          cmdstanr::check_cmdstan_toolchain(fix = TRUE, quiet = FALSE)
+          v <- tryCatch(cmdstanr::cmdstan_version(error_on_NA = FALSE),
+                        error = function(e) NA)
+          if (length(v) == 0L || anyNA(v)) {
+            cmdstanr::install_cmdstan(cores = 2, quiet = FALSE)
+          }
+          print(cmdstanr::cmdstan_version())
+          RS
+
+      - name: Verify Python can see CmdStan
+        run: |
+          python - <<'PY'
+          import cmdstanpy
+          print("CmdStan path:", cmdstanpy.cmdstan_path())
+          print("CmdStan version:", cmdstanpy.cmdstan_version())
+          PY
 
       # ---------------------------------------------------------------------
       # 1. Acquire. Exactly the datasets the freeze names, hashed on arrival.
