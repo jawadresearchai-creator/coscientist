@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full_toolchain:
+        description: Also verify the complete R/Python/Stan research stack
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 3 * * 1"
 
 permissions:
   contents: read
@@ -37,10 +44,10 @@ jobs:
         with:
           use-public-rspm: true
 
-      # The ordinary CI must exercise the cross-language contract, not report a
+      # Ordinary CI must exercise the cross-language contract, not report a
       # green suite with all R tests skipped. These are the R packages used by
-      # the contract tests themselves; the full research stack is verified by
-      # scientific-toolchain.yml.
+      # the contract tests themselves; the full research stack is a separate
+      # job below.
       - name: Install R contract dependencies
         run: |
           Rscript - <<'RS'
@@ -63,3 +70,136 @@ jobs:
 
       - name: Full cross-language contract suite
         run: pytest -q
+
+  # Heavy capability verification. It runs on PRs, weekly, and when explicitly
+  # requested by workflow_dispatch. It does not run on every push to main.
+  full-research-stack:
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full_toolchain)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install system libraries for scientific computing
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gfortran cmake ninja-build pkg-config \
+            libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev \
+            libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
+            libfreetype6-dev libpng-dev libtiff-dev libjpeg-dev \
+            libgdal-dev libgeos-dev libproj-dev libudunits2-dev \
+            libopenblas-dev liblapack-dev jq sqlite3
+
+      - name: Install CoScientist and advanced Python analysis stack
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          pip install -e ".[dev,analysis]"
+
+      - name: Verify advanced Python analysis stack
+        run: |
+          python - <<'PY'
+          import importlib
+          modules = [
+              "pyarrow", "polars", "duckdb", "statsmodels", "linearmodels",
+              "pyfixest", "sklearn", "doubleml", "dowhy", "econml",
+              "xgboost", "lightgbm", "rdrobust", "arch", "lifelines",
+              "cvxpy", "networkx", "cmdstanpy", "pymc", "arviz",
+              "matplotlib", "plotnine",
+          ]
+          failed = []
+          for name in modules:
+              try:
+                  mod = importlib.import_module(name)
+                  version = getattr(mod, "__version__", "unknown")
+                  print(f"{name}: {version}")
+              except Exception as exc:
+                  failed.append((name, repr(exc)))
+          if failed:
+              for name, exc in failed:
+                  print(f"FAILED {name}: {exc}")
+              raise SystemExit(1)
+          PY
+
+      # R/dependencies.R is the declared management-science stack and records
+      # why each package exists: modern DiD, synthetic control, robust/cluster
+      # inference, RD/IV/panel estimators, causal ML, Bayesian diagnostics and
+      # publication tooling.
+      - name: Install declared advanced R stack
+        run: Rscript R/dependencies.R --install
+
+      - name: Verify every declared R package is loadable
+        run: |
+          Rscript - <<'RS'
+          source("R/dependencies.R")
+          missing <- names(DEPENDENCIES)[!vapply(
+            names(DEPENDENCIES), requireNamespace, logical(1), quietly = TRUE
+          )]
+          if (length(missing)) {
+            stop(sprintf("missing declared R packages: %s", paste(missing, collapse = ", ")))
+          }
+          versions <- vapply(names(DEPENDENCIES), function(p) {
+            as.character(utils::packageVersion(p))
+          }, character(1))
+          print(versions)
+          RS
+
+      - name: Cache CmdStan
+        uses: actions/cache@v4
+        with:
+          path: ~/.cmdstan
+          key: scientific-cmdstan-${{ runner.os }}-${{ hashFiles('R/dependencies.R') }}
+
+      - name: Install and verify CmdStan
+        run: |
+          Rscript - <<'RS'
+          cmdstanr::check_cmdstan_toolchain(fix = TRUE, quiet = FALSE)
+          v <- tryCatch(cmdstanr::cmdstan_version(error_on_NA = FALSE),
+                        error = function(e) NA)
+          if (length(v) == 0L || anyNA(v)) {
+            cmdstanr::install_cmdstan(cores = 2, quiet = FALSE)
+          }
+          print(cmdstanr::cmdstan_version())
+          RS
+
+      - name: Verify Python can see CmdStan
+        run: |
+          python - <<'PY'
+          import cmdstanpy
+          print("CmdStan path:", cmdstanpy.cmdstan_path())
+          print("CmdStan version:", cmdstanpy.cmdstan_version())
+          PY
+
+      - name: Run complete CoScientist suite with R enabled
+        run: pytest -q
+
+      - name: Record toolchain inventory
+        if: always()
+        run: |
+          mkdir -p toolchain-report
+          python --version > toolchain-report/runtime.txt 2>&1
+          Rscript --version >> toolchain-report/runtime.txt 2>&1
+          gcc --version | head -1 >> toolchain-report/runtime.txt 2>&1
+          gfortran --version | head -1 >> toolchain-report/runtime.txt 2>&1
+          cmake --version | head -1 >> toolchain-report/runtime.txt 2>&1
+          python -m pip freeze > toolchain-report/python-freeze.txt
+          Rscript -e 'ip <- installed.packages()[,c("Package","Version")]; write.table(ip, file="toolchain-report/r-packages.tsv", sep="\t", quote=FALSE, row.names=FALSE)' || true
+          Rscript -e 'if (requireNamespace("cmdstanr", quietly=TRUE)) cat(as.character(cmdstanr::cmdstan_version(error_on_NA=FALSE)), "\n")' > toolchain-report/cmdstan.txt 2>&1 || true
+
+      - name: Upload toolchain inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scientific-toolchain-inventory-${{ github.run_id }}
+          path: toolchain-report/
+          retention-days: 14
