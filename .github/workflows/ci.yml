@@ -16,6 +16,13 @@ on:
 permissions:
   contents: read
 
+# A scientific-stack bootstrap is deliberately heavy. When a newer commit lands
+# on the same PR/branch, the older run is no longer authoritative and must not
+# keep consuming Actions minutes or publish a stale toolchain inventory.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python-kernel:
     runs-on: ubuntu-latest
