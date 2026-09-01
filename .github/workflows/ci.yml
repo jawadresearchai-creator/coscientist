@@ -42,8 +42,8 @@ jobs:
       # the contract tests themselves; the full research stack is verified by
       # scientific-toolchain.yml.
       - name: Install R contract dependencies
-        shell: Rscript {0}
         run: |
+          Rscript - <<'RS'
           install.packages(c("jsonlite", "digest", "data.table"),
                            repos = "https://cloud.r-project.org")
           stopifnot(
@@ -51,6 +51,7 @@ jobs:
             requireNamespace("digest", quietly = TRUE),
             requireNamespace("data.table", quietly = TRUE)
           )
+          RS
 
       - name: Install Python kernel
         run: pip install -e ".[dev]"
