@@ -103,31 +103,49 @@ print_dependencies <- function() {
   }
 }
 
+hard_dependencies <- c("Depends", "Imports", "LinkingTo")
+
 install_dependencies <- function() {
   options(repos = EXTRA_REPOS)
+
+  cores <- suppressWarnings(parallel::detectCores(logical = FALSE))
+  ncpus <- if (is.na(cores) || cores < 2L) 1L else max(1L, cores - 1L)
+  options(Ncpus = ncpus)
 
   bootstrap <- c("renv", "remotes")
   missing_bootstrap <- bootstrap[!vapply(
     bootstrap, requireNamespace, logical(1), quietly = TRUE
   )]
   if (length(missing_bootstrap)) {
-    install.packages(missing_bootstrap, repos = CRAN_REPO)
+    install.packages(
+      missing_bootstrap,
+      repos = CRAN_REPO,
+      dependencies = hard_dependencies,
+      Ncpus = ncpus
+    )
   }
 
-  # Bootstrap capabilities directly from their authoritative repositories.
-  # The exact environment is frozen afterwards by renv::snapshot(). This avoids
-  # confusing a stale configured package-manager snapshot with current CRAN.
+  # Install only hard dependencies. `dependencies = TRUE` also installs every
+  # package's Suggests tree, which is not part of our declared capability
+  # contract and can multiply a clean CI bootstrap dramatically. If a feature
+  # needs an optional package, that package belongs explicitly in DEPENDENCIES
+  # and therefore in the eventual renv.lock.
   cran <- cran_dependencies()
   missing_cran <- cran[!vapply(cran, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing_cran)) {
-    install.packages(missing_cran, repos = EXTRA_REPOS, dependencies = TRUE)
+    install.packages(
+      missing_cran,
+      repos = EXTRA_REPOS,
+      dependencies = hard_dependencies,
+      Ncpus = ncpus
+    )
   }
 
   for (pkg in names(GITHUB_PACKAGES)) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       remotes::install_github(
         GITHUB_PACKAGES[[pkg]],
-        dependencies = TRUE,
+        dependencies = hard_dependencies,
         upgrade = "never",
         repos = EXTRA_REPOS
       )
@@ -137,7 +155,9 @@ install_dependencies <- function() {
   if (!requireNamespace("cmdstanr", quietly = TRUE)) {
     install.packages(
       "cmdstanr",
-      repos = c("https://stan-dev.r-universe.dev", CRAN_REPO)
+      repos = c("https://stan-dev.r-universe.dev", CRAN_REPO),
+      dependencies = hard_dependencies,
+      Ncpus = ncpus
     )
   }
 
