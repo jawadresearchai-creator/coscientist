@@ -5,11 +5,17 @@
 # or worse, restores something other than what it names. The lock is generated
 # by snapshotting a real installation and is committed from that snapshot:
 #
-#   Rscript R/dependencies.R --install     # first time, or when adding a package
-#   Rscript -e 'renv::snapshot()'          # writes renv.lock from what installed
+#   Rscript R/dependencies.R --install
+#   Rscript -e 'renv::snapshot(prompt = FALSE)'
 #
 # After that, renv.lock is authoritative and CI restores from it. This file
 # stays as the record of WHY each package is here, which a lock file cannot say.
+#
+# Bootstrap policy is deliberately explicit. CRAN packages are installed from
+# the live CRAN mirror rather than from an incidental package-manager snapshot;
+# packages whose authoritative distribution is GitHub use their upstream repos;
+# cmdstanr uses Stan's official R-universe. renv then records the exact resolved
+# versions / Git SHAs from the successful installation.
 
 DEPENDENCIES <- list(
 
@@ -65,12 +71,93 @@ DEPENDENCIES <- list(
   "renv"         = "the lock itself"
 )
 
+CRAN_REPO <- "https://cloud.r-project.org"
+EXTRA_REPOS <- c(
+  stan = "https://stan-dev.r-universe.dev",
+  apache = "https://apache.r-universe.dev",
+  CRAN = CRAN_REPO
+)
+
+# Upstream repositories documented by the package authors. renv::snapshot()
+# records their resolved Git commit SHAs in the generated lock.
+GITHUB_PACKAGES <- c(
+  "HonestDiD" = "asheshrambachan/HonestDiD",
+  "synthdid" = "synth-inference/synthdid"
+)
+
+cran_dependencies <- function() {
+  setdiff(names(DEPENDENCIES), c(names(GITHUB_PACKAGES), "cmdstanr", "renv"))
+}
+
+print_dependencies <- function() {
+  cat("CoScientist R stack:\n")
+  for (pkg in names(DEPENDENCIES)) {
+    source <- if (pkg %in% names(GITHUB_PACKAGES)) {
+      paste0("github:", GITHUB_PACKAGES[[pkg]])
+    } else if (identical(pkg, "cmdstanr")) {
+      "stan-r-universe"
+    } else {
+      "CRAN"
+    }
+    cat(sprintf("  %-20s %-34s %s\n", pkg, source, DEPENDENCIES[[pkg]]))
+  }
+}
+
+install_dependencies <- function() {
+  options(repos = EXTRA_REPOS)
+
+  bootstrap <- c("renv", "remotes")
+  missing_bootstrap <- bootstrap[!vapply(
+    bootstrap, requireNamespace, logical(1), quietly = TRUE
+  )]
+  if (length(missing_bootstrap)) {
+    install.packages(missing_bootstrap, repos = CRAN_REPO)
+  }
+
+  # Bootstrap capabilities directly from their authoritative repositories.
+  # The exact environment is frozen afterwards by renv::snapshot(). This avoids
+  # confusing a stale configured package-manager snapshot with current CRAN.
+  cran <- cran_dependencies()
+  missing_cran <- cran[!vapply(cran, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing_cran)) {
+    install.packages(missing_cran, repos = EXTRA_REPOS, dependencies = TRUE)
+  }
+
+  for (pkg in names(GITHUB_PACKAGES)) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      remotes::install_github(
+        GITHUB_PACKAGES[[pkg]],
+        dependencies = TRUE,
+        upgrade = "never",
+        repos = EXTRA_REPOS
+      )
+    }
+  }
+
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    install.packages(
+      "cmdstanr",
+      repos = c("https://stan-dev.r-universe.dev", CRAN_REPO)
+    )
+  }
+
+  missing <- names(DEPENDENCIES)[!vapply(
+    names(DEPENDENCIES), requireNamespace, logical(1), quietly = TRUE
+  )]
+  if (length(missing)) {
+    stop(sprintf(
+      "required R packages failed to install: %s",
+      paste(missing, collapse = ", ")
+    ))
+  }
+
+  message("all declared R capabilities installed")
+  message("snapshot this real environment with: renv::snapshot(prompt = FALSE)")
+  invisible(TRUE)
+}
+
 if (!interactive() && "--install" %in% commandArgs(TRUE)) {
-  if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv")
-  pkgs <- setdiff(names(DEPENDENCIES), "renv")
-  # cmdstanr is not on CRAN.
-  pkgs <- setdiff(pkgs, "cmdstanr")
-  renv::install(pkgs)
-  renv::install("stan-dev/cmdstanr")
-  message("installed; now run renv::snapshot() and commit renv.lock")
+  install_dependencies()
+} else {
+  print_dependencies()
 }
