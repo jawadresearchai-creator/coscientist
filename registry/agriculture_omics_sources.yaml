@@ -1,0 +1,78 @@
+# Agriculture CoScientist public-omics source extension.
+#
+# These are delivery repositories/platforms. `platform: true` deliberately
+# prevents a repository-level redistribution claim from being inherited by
+# every deposited study. The dataset freeze records accession-level provenance
+# and dataset-specific reuse terms before analysis.
+
+sources:
+  - id: NCBI_GEO
+    name: NCBI Gene Expression Omnibus
+    access_class: OPEN
+    redistributable: false
+    platform: true
+    url: https://www.ncbi.nlm.nih.gov/geo/
+    concepts: [gene_expression, transcriptomics, rna_seq, microarray, functional_genomics, plant_omics]
+    granularity: omics-study-sample
+    licence: dataset-specific; repository access is public
+    notes: >
+      Primary discovery route for public functional-genomics studies and
+      processed expression/count matrices. Record study accession and original
+      sample metadata in the omics dataset freeze.
+
+  - id: NCBI_SRA
+    name: NCBI Sequence Read Archive
+    access_class: OPEN
+    redistributable: false
+    platform: true
+    url: https://www.ncbi.nlm.nih.gov/sra/
+    concepts: [raw_reads, sequencing, rna_seq, transcriptomics, genomics, plant_omics]
+    granularity: sequencing-run
+    licence: dataset-specific; repository access is public
+    notes: >
+      Raw-read route. Use only when the scientific question needs read-level
+      reprocessing; prefer frozen count matrices when they are sufficient.
+
+  - id: EMBL_ENA
+    name: European Nucleotide Archive
+    access_class: OPEN
+    redistributable: false
+    platform: true
+    url: https://www.ebi.ac.uk/ena/browser/home
+    concepts: [raw_reads, sequencing, rna_seq, transcriptomics, genomics, plant_omics]
+    granularity: sequencing-run
+    licence: dataset-specific; repository access is public
+    notes: Independent raw sequence/archive route and accession cross-check.
+
+  - id: EBI_EXPRESSION_ATLAS
+    name: EMBL-EBI Expression Atlas
+    access_class: OPEN
+    redistributable: false
+    platform: true
+    url: https://www.ebi.ac.uk/gxa/home
+    concepts: [gene_expression, transcriptomics, rna_seq, raw_counts, differential_expression, plant_omics]
+    granularity: omics-study-sample
+    licence: dataset/source-specific for deposited data; service content terms recorded separately
+    notes: >
+      Preferred efficient route when standardized counts or processed
+      differential-expression matrices answer the question without FASTQ.
+
+  - id: PRIDE
+    name: Proteomics Identifications Database (PRIDE)
+    access_class: OPEN
+    redistributable: false
+    platform: true
+    url: https://www.ebi.ac.uk/pride/
+    concepts: [proteomics, protein_abundance, mass_spectrometry, plant_omics]
+    granularity: omics-study-sample
+    licence: dataset-specific
+
+  - id: METABOLIGHTS
+    name: MetaboLights
+    access_class: OPEN
+    redistributable: false
+    platform: true
+    url: https://www.ebi.ac.uk/metabolights/
+    concepts: [metabolomics, metabolites, mass_spectrometry, nmr, plant_omics]
+    granularity: omics-study-sample
+    licence: dataset-specific
