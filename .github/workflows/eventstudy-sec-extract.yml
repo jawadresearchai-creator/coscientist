@@ -1,0 +1,191 @@
+name: Event Study SEC Extraction v2
+
+# Pre-return text construction only. This workflow has no market-data credentials,
+# no return inputs, and no path into 08_Returns_LOCKED.
+on:
+  push:
+    branches: [eventstudy-sec-extraction-v2]
+    paths:
+      - "src/coscientist/eventstudy_sec.py"
+      - "tests/test_eventstudy_sec.py"
+      - ".github/workflows/eventstudy-sec-extract.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "smoke (3 files), qa (100 files), or full (all 7,361)"
+        required: true
+        type: choice
+        options: [smoke, qa, full]
+        default: smoke
+      publish:
+        description: "Publish merged full-pass outputs to Event Study Drive folders"
+        required: true
+        type: boolean
+        default: false
+      raw_folder_id:
+        description: "Drive folder containing the flat 7,361-file raw SEC corpus"
+        required: true
+        default: "1DgdSq4Ps3yWWsIEg11w9_xi8_9G2xzyR"
+      eventstudy_root_id:
+        description: "Authoritative Event Study Drive root"
+        required: true
+        default: "1bLr6H4ir0DIONrXy1--u8BNaX_zZwW_3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eventstudy-sec-v2-${{ github.event_name }}-${{ inputs.mode || 'smoke' }}
+  cancel-in-progress: false
+
+env:
+  RAW_FOLDER_ID: ${{ inputs.raw_folder_id || '1DgdSq4Ps3yWWsIEg11w9_xi8_9G2xzyR' }}
+  EVENTSTUDY_ROOT_ID: ${{ inputs.eventstudy_root_id || '1bLr6H4ir0DIONrXy1--u8BNaX_zZwW_3' }}
+
+jobs:
+  smoke:
+    if: github.event_name == 'push' || inputs.mode == 'smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Verify Drive identity and parse three size-spanning filings
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m coscientist.eventstudy_sec run \
+            --raw-folder-id "$RAW_FOLDER_ID" \
+            --mode smoke --out-dir results/smoke
+          python - <<'PY'
+          import json
+          p=json.load(open('results/smoke/run_summary.json'))
+          assert p['status']=='PASS', p
+          assert p['selected']==3, p
+          assert p['processed_ok']==3, p
+          assert p['failed']==0, p
+          assert p['section_collision_failures']==0, p
+          assert p['outcome_inspected']=='NO', p
+          print(json.dumps(p, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eventstudy-sec-smoke-${{ github.run_id }}
+          path: results/smoke/
+          retention-days: 14
+
+  qa:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'qa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Deterministic 100-filing size x accession-year QA run
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m coscientist.eventstudy_sec run \
+            --raw-folder-id "$RAW_FOLDER_ID" \
+            --mode qa --out-dir results/qa
+          python - <<'PY'
+          import json
+          p=json.load(open('results/qa/run_summary.json'))
+          assert p['status']=='PASS', p
+          assert p['selected']==100, p
+          assert p['processed_ok']==100, p
+          assert p['failed']==0, p
+          assert p['section_collision_failures']==0, p
+          assert p['outcome_inspected']=='NO', p
+          print(json.dumps(p, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eventstudy-sec-qa-${{ github.run_id }}
+          path: results/qa/
+          retention-days: 30
+
+  full:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Stream one deterministic corpus shard from Drive
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m coscientist.eventstudy_sec run \
+            --raw-folder-id "$RAW_FOLDER_ID" \
+            --mode full --shard-index "${{ matrix.shard }}" --shard-count 16 \
+            --out-dir "results/shard-${{ matrix.shard }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sec-shard-${{ matrix.shard }}
+          path: results/shard-${{ matrix.shard }}/
+          retention-days: 30
+
+  merge:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    needs: full
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sec-shard-*
+          path: shard-results
+      - name: Merge and enforce corpus-wide mechanical invariants
+        run: |
+          python -m coscientist.eventstudy_sec merge \
+            --input-root shard-results --out-dir merged
+          cat merged/PHASE2_EXTRACTION_AUDIT_v2.json
+      - name: Publish compact outputs to Drive only when explicitly requested
+        if: inputs.publish == true
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m coscientist.eventstudy_sec publish \
+            --eventstudy-root-id "$EVENTSTUDY_ROOT_ID" \
+            --input-dir merged --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eventstudy-sec-v2-merged-${{ github.run_id }}
+          path: merged/
+          retention-days: 30
