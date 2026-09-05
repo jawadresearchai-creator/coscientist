@@ -1,0 +1,58 @@
+name: Event Study Self-Hosted Extraction
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/eventstudy-self-hosted.yml'
+      - 'scripts/setup_eventstudy_self_hosted_runner.ps1'
+      - 'scripts/run_eventstudy_self_hosted_pipeline.ps1'
+      - 'src/coscientist/eventstudy_local.py'
+      - 'src/coscientist/eventstudy_sec.py'
+      - 'tests/test_eventstudy_sec.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eventstudy-self-hosted-extraction
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    name: extract-7361-drive-10ks
+    runs-on: [self-hosted, Windows, X64, eventstudy]
+    timeout-minutes: 1440
+    steps:
+      - name: Checkout canonical CoScientist
+        uses: actions/checkout@v4
+
+      - name: Verify execution identity
+        shell: powershell
+        run: |
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "Machine: $env:COMPUTERNAME"
+          Write-Host "Commit: $env:GITHUB_SHA"
+          Write-Host "User: $env:USERNAME"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+
+      - name: Run resumable Event Study extraction
+        shell: powershell
+        run: ./scripts/run_eventstudy_self_hosted_pipeline.ps1
+
+      - name: Report completion
+        if: always()
+        shell: powershell
+        run: |
+          $hits = @()
+          Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+            $candidate = Join-Path $_.Root 'My Drive\Event Study\00_Protocol\PHASE2_EXTRACTION_STATUS_v2.json'
+            if (Test-Path $candidate) { $hits += $candidate }
+          }
+          if ($hits.Count -eq 1) {
+            Write-Host 'Latest Drive status:'
+            Get-Content -LiteralPath $hits[0]
+          } else {
+            Write-Host "Status file matches: $($hits -join ', ')"
+          }
