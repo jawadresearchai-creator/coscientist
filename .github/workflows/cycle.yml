@@ -119,7 +119,6 @@ jobs:
 
       - name: Persist canonical paper and Director state to Drive
         if: >-
-          always() &&
           steps.paper_pull.outcome == 'success' &&
           steps.director_pull.outcome == 'success' &&
           steps.answer_pull.outcome == 'success' &&
