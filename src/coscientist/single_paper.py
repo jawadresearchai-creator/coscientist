@@ -1,9 +1,14 @@
 """Canonical single-paper scientific state for Management Science research.
 
 Exactly one paper may be scientifically active. Once a topic is admitted,
-broad discovery is locked until that paper is SUBMISSION_READY or RETIRED for
-a genuine blocker. Ordinary execution/data friction is repair work inside the
-active paper, not a reason to start another topic.
+broad discovery is locked until that paper is SUBMISSION_READY, RETIRED for
+a genuine scientific blocker, or explicitly USER_WITHDRAWN by the owner.
+Ordinary execution/data friction is repair work inside the active paper, not a
+reason for the system itself to start another topic.
+
+The one-paper rule prevents parallel active papers; it does not trap the owner
+in a topic. Owner withdrawal is a human priority decision, not a scientific
+failure, and therefore has its own terminal state distinct from RETIRED.
 
 Historical candidate/slate state is intentionally not part of this object.
 """
@@ -39,6 +44,7 @@ class PaperStage(str, Enum):
     FINAL_AUDIT = "FINAL_AUDIT"
     SUBMISSION_READY = "SUBMISSION_READY"
     RETIRED = "RETIRED"
+    USER_WITHDRAWN = "USER_WITHDRAWN"
 
 
 STAGE_ORDER = [
@@ -53,7 +59,11 @@ STAGE_ORDER = [
     PaperStage.FINAL_AUDIT,
     PaperStage.SUBMISSION_READY,
 ]
-TERMINAL_STAGES = {PaperStage.SUBMISSION_READY, PaperStage.RETIRED}
+TERMINAL_STAGES = {
+    PaperStage.SUBMISSION_READY,
+    PaperStage.RETIRED,
+    PaperStage.USER_WITHDRAWN,
+}
 PRE_FREEZE_STAGES = {
     PaperStage.SELECTED,
     PaperStage.DEVELOPING,
@@ -104,6 +114,7 @@ class SinglePaperState:
     stage: PaperStage | None = None
     evolution_count: int = 0
     current_problem: dict[str, Any] | None = None
+    owner_next_topic_direction: str | None = None
     history: list[dict[str, Any]] = field(default_factory=list)
     schema_version: int = STATE_SCHEMA_VERSION
     operating_mode: str = OPERATING_MODE
@@ -131,6 +142,10 @@ class SinglePaperState:
             stage=stage,
             evolution_count=int(raw.get("evolution_count", 0)),
             current_problem=raw.get("current_problem"),
+            owner_next_topic_direction=(
+                str(raw.get("owner_next_topic_direction"))
+                if raw.get("owner_next_topic_direction") else None
+            ),
             history=list(raw.get("history", [])),
             schema_version=int(raw.get("schema_version", STATE_SCHEMA_VERSION)),
             operating_mode=OPERATING_MODE,
@@ -145,6 +160,7 @@ class SinglePaperState:
             "stage": self.stage.value if self.stage else None,
             "evolution_count": self.evolution_count,
             "current_problem": self.current_problem,
+            "owner_next_topic_direction": self.owner_next_topic_direction,
             "history": self.history,
             "updated_at": self.updated_at,
         }
@@ -165,7 +181,7 @@ class SinglePaperState:
         if not self.discovery_allowed:
             raise SinglePaperError(
                 f"topic discovery is locked while {self.active_paper.paper_id} is active "
-                f"at {self.stage.value}; strengthen the active paper instead"
+                f"at {self.stage.value}. Continue it, or the owner may explicitly withdraw it."
             )
 
     def admit(self, charter: TopicCharter) -> None:
@@ -174,6 +190,7 @@ class SinglePaperState:
         self.stage = PaperStage.SELECTED
         self.evolution_count = 0
         self.current_problem = None
+        self.owner_next_topic_direction = None
         # New papers do not inherit historical candidate genealogy/court state.
         self.history = [{"at": utcnow(), "event": "ADMITTED", "paper_id": charter.paper_id}]
         self.save()
@@ -184,8 +201,12 @@ class SinglePaperState:
         target = PaperStage(new_stage)
         if target is PaperStage.RETIRED:
             raise SinglePaperError("use retire() with a genuine blocker")
+        if target is PaperStage.USER_WITHDRAWN:
+            raise SinglePaperError("use withdraw() after an explicit owner instruction")
         if self.stage is PaperStage.RETIRED:
             raise SinglePaperError("a retired paper cannot be reactivated; admit a new paper")
+        if self.stage is PaperStage.USER_WITHDRAWN:
+            raise SinglePaperError("a user-withdrawn paper cannot be reactivated; admit a new paper")
         if self.stage is PaperStage.SUBMISSION_READY:
             if target is PaperStage.SUBMISSION_READY:
                 return
@@ -246,6 +267,7 @@ class SinglePaperState:
                 f"problems inside the active topic. Allowed: {allowed}"
             ) from exc
         self.stage = PaperStage.RETIRED
+        self.owner_next_topic_direction = None
         self.current_problem = {
             "code": blocker.value,
             "detail": detail,
@@ -255,9 +277,47 @@ class SinglePaperState:
         self.history.append({"at": utcnow(), "event": "RETIRED", **self.current_problem})
         self.save()
 
+    def withdraw(self, reason: str, next_topic_direction: str | None = None) -> None:
+        """Honor an explicit owner decision to stop the current paper.
+
+        This is not a scientific failure and must never be inferred by a model.
+        It is valid at any non-terminal active stage. The paper becomes terminal,
+        releases the one-paper lock, and may carry a user-supplied direction for
+        the next discovery action.
+        """
+        if not self.active_paper or not self.stage:
+            raise SinglePaperError("no active paper to withdraw")
+        if self.stage in TERMINAL_STAGES:
+            raise SinglePaperError(f"paper is already terminal at {self.stage.value}")
+        reason = str(reason).strip()
+        if not reason:
+            raise SinglePaperError("owner withdrawal requires a non-empty reason")
+        direction = str(next_topic_direction or "").strip() or None
+        prior_stage = self.stage.value
+        self.stage = PaperStage.USER_WITHDRAWN
+        self.current_problem = None
+        self.owner_next_topic_direction = direction
+        self.history.append({
+            "at": utcnow(),
+            "event": "USER_WITHDRAWN",
+            "paper_id": self.active_paper.paper_id,
+            "prior_stage": prior_stage,
+            "reason": reason,
+            "next_topic_direction": direction,
+            "classification": "OWNER_DECISION",
+        })
+        self.save()
+
     def next_action(self) -> str:
         if self.active_paper is None:
             return "DISCOVERY: select one strong topic, admit it, then stop broad topic search"
+        if self.stage is PaperStage.USER_WITHDRAWN:
+            if self.owner_next_topic_direction:
+                return (
+                    "DISCOVERY: owner withdrew the prior paper; evaluate and admit one new paper "
+                    f"centered on: {self.owner_next_topic_direction}"
+                )
+            return "DISCOVERY: owner withdrew the prior paper; select and admit one new topic"
         if self.stage is PaperStage.RETIRED:
             return "DISCOVERY: prior paper is genuinely retired; a new topic may be selected"
         if self.stage is PaperStage.SUBMISSION_READY:
@@ -288,7 +348,11 @@ def _parser() -> argparse.ArgumentParser:
     a = sub.add_parser("admit")
     a.add_argument("--charter", required=True)
     t = sub.add_parser("transition")
-    t.add_argument("--stage", choices=[s.value for s in PaperStage if s is not PaperStage.RETIRED], required=True)
+    t.add_argument(
+        "--stage",
+        choices=[s.value for s in PaperStage if s not in {PaperStage.RETIRED, PaperStage.USER_WITHDRAWN}],
+        required=True,
+    )
     e = sub.add_parser("evolve")
     e.add_argument("--note", required=True)
     pr = sub.add_parser("problem")
@@ -297,6 +361,9 @@ def _parser() -> argparse.ArgumentParser:
     r = sub.add_parser("retire")
     r.add_argument("--blocker", choices=[b.value for b in GenuineBlocker], required=True)
     r.add_argument("--detail", required=True)
+    w = sub.add_parser("withdraw")
+    w.add_argument("--reason", required=True)
+    w.add_argument("--next-topic", default=None)
     return p
 
 
@@ -311,6 +378,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stage           {state.stage.value if state.stage else 'NO_ACTIVE_PAPER'}")
         print(f"evolutions      {state.evolution_count}")
         print(f"discovery       {'ALLOWED' if state.discovery_allowed else 'LOCKED'}")
+        if state.owner_next_topic_direction:
+            print(f"owner direction {state.owner_next_topic_direction}")
         if state.current_problem:
             print(f"problem         {state.current_problem['code']}: {state.current_problem['detail']}")
     elif args.command == "next-action":
@@ -326,6 +395,8 @@ def main(argv: list[str] | None = None) -> int:
         state.record_problem(args.code, args.detail)
     elif args.command == "retire":
         state.retire(args.blocker, args.detail)
+    elif args.command == "withdraw":
+        state.withdraw(args.reason, args.next_topic)
     return 0
 
 

@@ -1,10 +1,12 @@
-# CoScientist V4.6 — single-paper Management Science research engine
+# CoScientist V4.6.1 — single-paper Management Science research engine
 
 CoScientist is a deterministic research-governance and analysis kernel for **one Management Science paper at a time**. Reasoning models may perform judgment, literature interpretation, adversarial review and prose through explicit handoffs, but `src/coscientist/` never calls an LLM directly.
 
 ## Operating rule
 
-Exactly one paper may be scientifically active. Broad topic discovery is allowed only when there is no active paper, or when the current paper is `SUBMISSION_READY` or has been `RETIRED` for a genuine blocker. Ordinary execution friction triggers same-paper repair, not replacement.
+Exactly one paper may be scientifically active. The rule prevents parallel papers; it does **not** trap the owner in a topic.
+
+Broad topic discovery is allowed when there is no active paper, the current paper is `SUBMISSION_READY`, it is `RETIRED` for a genuine scientific blocker, or the owner explicitly marks it `USER_WITHDRAWN`.
 
 ```text
 NO_ACTIVE_PAPER
@@ -18,9 +20,14 @@ NO_ACTIVE_PAPER
   -> MANUSCRIPT
   -> FINAL_AUDIT
   -> SUBMISSION_READY
+
+At any non-terminal active stage:
+  explicit owner instruction -> USER_WITHDRAWN -> fresh discovery
 ```
 
-`RETIRED` is permitted only for a genuine scientific blocker: direct scoop with no residual contribution, essential-data/measurement impossibility, identification impossibility, fundamental power failure, legal/ethical impossibility, or fundamental construct failure.
+`RETIRED` remains reserved for genuine scientific impossibility. `USER_WITHDRAWN` is a separate owner priority/preference decision and does not require inventing a blocker.
+
+If the owner explicitly names the next topic, that direction is carried into the next Director discovery action. The system evaluates and refines that topic rather than silently substituting an unrelated one.
 
 ## Three control records
 
@@ -42,68 +49,59 @@ There are only three architectural roles:
 
 The current skills are Humanizer v2.0, LiteratureTheory v1.0, StudyDesignReasoner v1.0, HostileReviewer v1.0, ManuscriptWriter v1.0, CitationIntegrity v1.0, and FinalAuditReasoner v1.0.
 
-Reasoning answers declare `execution_role` and exact `skills_used` versions. Independent-audit answers also require `fresh_context_attested: true`.
+## Owner withdrawal
+
+An explicit owner instruction such as "stop this topic", "I don't want to continue this paper", or "switch to X instead" authorizes deterministic withdrawal.
+
+Withdrawal:
+- is valid at any non-terminal active stage;
+- is not a scientific failure;
+- clears the stale pending Director action through reconciliation;
+- releases the one-paper lock;
+- may carry `owner_next_topic_direction` into the next discovery action;
+- never creates two active papers.
+
+A reasoning model must not infer owner withdrawal from null results, difficult repairs, or ordinary failure. It requires an explicit owner instruction.
+
+The v4.6.1 facade is:
+
+```bash
+python -m coscientist.director_v461 --state state/single_paper.json \
+  --director state/director.json --catalog state/gms_lake_catalog.json status
+
+python -m coscientist.director_v461 --state state/single_paper.json \
+  --director state/director.json --catalog state/gms_lake_catalog.json \
+  withdraw --reason "Owner changed research priority" \
+  --next-topic "event study of a new AI model release"
+```
 
 ## V4.6 integrity rule
 
 **Reasoning may propose, interpret and audit. Mechanically knowable facts must come from deterministic receipts.**
 
-V4.6 adds write-once, tamper-evident lifecycle receipts:
-
+Write-once lifecycle receipts include:
 - `DATASET_SET` — exact GMS dataset identities and SHA-256 values;
-- `POWER` — deterministic pre-period power/MDE result bound to the input bytes and parameters;
+- `POWER` — deterministic pre-period power/MDE result;
 - `ANALYSIS` — freeze, AnalysisLock, exact Git SHA, result-manifest hash, workflow run and verified publication;
 - `FINAL_AUDIT_EVIDENCE` — manuscript hash plus mechanically verified numeric provenance and reproducibility evidence.
 
-A receipt hash detects later mutation. Receipt provenance comes from the controlled deterministic workflow and immutable per-paper Drive write path; an LLM-supplied hash is not accepted as a substitute.
-
 ### Hardened gates
 
-- `DESIGN_CLOSURE` ignores reasoning-supplied dataset hashes and power PASS values; it injects them from canonical receipts.
+- `DESIGN_CLOSURE` ignores reasoning-supplied dataset hashes and power PASS values and injects canonical receipts.
 - `PRE_FREEZE_AUDIT` PASS is conjunctive across novelty, measurement, identification, power and access/licence/ethics.
-- reasoning-declared external-source verification cannot close essential data feasibility; the source must first be materialised/registered into the GMS lake.
-- `RESULTS_COMPLETE` requires the canonical analysis receipt bound to the active freeze and AnalysisLock.
+- reasoning-declared external-source verification cannot close essential data feasibility; the source must first be materialised/registered in GMS.
+- `RESULTS_COMPLETE` requires a canonical analysis receipt bound to the active freeze and AnalysisLock.
 - final PASS consumes `FINAL_AUDIT_EVIDENCE` for mechanically knowable audit dimensions.
-
-Use the v4.6 facade for operating commands:
-
-```bash
-python -m coscientist.director_v46 --state state/single_paper.json \
-  --director state/director.json --catalog state/gms_lake_catalog.json status
-
-python -m coscientist.director_v46 --state state/single_paper.json \
-  --director state/director.json --catalog state/gms_lake_catalog.json \
-  ensure --action-out state/director_action.json
-
-python -m coscientist.director_v46 --state state/single_paper.json \
-  --director state/director.json --catalog state/gms_lake_catalog.json \
-  --receipt-dir state/receipts apply --answer state/director_answer.json
-```
 
 ## Per-paper immutable Drive state
 
-The mutable orchestration projections stay in the canonical state root. Every admitted paper also receives one unique child folder containing write-once lifecycle artifacts, for example:
-
-```text
-state/
-  single_paper.json
-  director.json
-  director_answer.json
-  MS-LB-ENTRY-2026/
-    dataset_receipt.json
-    power_receipt.json
-    freeze.json
-    analysis_lock.json
-    analysis_receipt.json
-    final_audit_evidence.json
-```
+Mutable orchestration projections remain in the canonical state root. Each paper may also have a unique child folder containing write-once lifecycle artifacts such as dataset/power receipts, freeze, AnalysisLock, analysis receipt and final-audit evidence.
 
 Different bytes cannot replace an existing immutable artifact in place.
 
 ## Data rule — lake first
 
-The Global Management Science data lake owns ingestion; CoScientist owns scientific selection. For each required construct the order is:
-
+For each required construct use:
 1. `03_RESEARCH` research-ready mart;
 2. `02_CURATED` object;
 3. `01_RAW_IMMUTABLE` / query-layer materialisation;
@@ -111,11 +109,9 @@ The Global Management Science data lake owns ingestion; CoScientist owns scienti
 5. defensible pre-freeze evolution of the same paper;
 6. genuine essential-data blocker.
 
-Do not reacquire data already held adequately. Large/query-native sources are materialised as the smallest useful extract and that extract is hashed before confirmatory design closure.
+Do not reacquire data already held adequately. Materialize the smallest useful paper-specific extract and hash it before confirmatory design closure.
 
 ## Freeze and analysis autonomy
-
-The scheduled cycle can now close the mechanical handoffs itself:
 
 ```text
 PRE_FREEZE PASS
@@ -131,30 +127,13 @@ PRE_FREEZE PASS
 
 If freeze creation, lock creation or workflow dispatch fails, the paper does not advance past the last verified state.
 
-`analysis.yml` has no historical default study. It requires the active paper id and the exact Git SHA whose code was locked, checks out that exact commit, verifies the AnalysisLock before outcome access, fetches only frozen data, executes the locked plan, assembles the ResultsBridge, publishes verified confirmatory results to Drive, and writes the immutable analysis receipt.
-
-## Two locks
-
-The design freeze fixes **which scientific question/design**. The analysis lock fixes **which code/environment/plan** before confirmatory outcome access.
-
-```text
-Drive state -> exact locked Git commit -> analysis-lock verify
-           -> frozen data -> freeze-verify -> R/Python/Stan drivers
-           -> sealed streams -> ResultsBridge -> verified publication
-           -> analysis receipt
-```
-
-Scientific state and results live in Google Drive, never Git. Code, tests, workflows, role contracts and skills live in GitHub.
-
 ## Humanizer boundary
 
 Humanizer is mandatory for manuscript drafting/revision/final polish but controls expression only. It must not independently change scientific meaning, methods, design, numbers, result tokens, citations, evidence support, claim strength, limitations or frozen scientific state.
 
 ## Security boundary
 
-The Drive-credential-bearing research cycle no longer has `contents: write` and no longer pushes heartbeat commits into the public repository. It uses `contents: read` plus `actions: write` only to dispatch the existing confirmatory analysis workflow.
-
-Repository rulesets, commit-SHA pinning of third-party Actions, and exact Python resolver locking are additional hardening items documented in `RELEASE_NOTES_v4.6.0.md`.
+The Drive-credential-bearing research cycle has `contents: read` and `actions: write` only to dispatch the confirmatory analysis workflow; it does not push scientific state or heartbeat commits to the public repository.
 
 ## Install and test
 
@@ -163,13 +142,13 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-The v4.6 tree currently collects **353 tests**. The suite includes package-import integrity, role/skill routing, one-paper lifecycle, freeze/AnalysisLock/provenance contracts, and adversarial v4.6 integrity-gate tests. `GUARANTEES.yaml` remains the executable contract registry, extended by versioned `GUARANTEES*.yaml` files.
+The v4.6.1 tree currently collects **359 tests**. The suite covers package integrity, one-paper governance, explicit owner withdrawal, role/skill routing, freeze/AnalysisLock/provenance contracts, and adversarial integrity gates.
 
 ## ChatGPT operation
 
-Use one ChatGPT Project named **Management Science CoScientist**. GitHub/Drive remain authoritative over chat memory. In every new chat, read `AGENTS.md`, `docs/REASONING_LAYER.md`, `single_paper.json`, and `director.json`, then load the role contract and exact skills named by the pending action's execution profile.
+Use one ChatGPT Project named **Management Science CoScientist**. GitHub/Drive remain authoritative over chat memory. In every new chat, read `AGENTS.md`, `docs/CHATGPT_START_HERE.md`, `single_paper.json`, and `director.json`, then load the role contract and exact skills named by the pending action's execution profile.
 
-If an action requires `INDEPENDENT_AUDIT`, execute it in a fresh chat/context that reconnects to the same canonical state; do not create another CoScientist or another paper.
+An explicit owner request to change topic should invoke `USER_WITHDRAWN`; do not falsely claim the old topic has a genuine blocker and do not tell the owner they are forced to continue it.
 
 ## Scope
 
