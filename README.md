@@ -163,7 +163,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-The suite includes package-import integrity, role/skill routing, one-paper lifecycle, freeze/AnalysisLock/provenance contracts, and adversarial v4.6 integrity-gate tests. `GUARANTEES.yaml` remains the executable contract registry, extended by versioned `GUARANTEES*.yaml` files.
+The v4.6 tree currently collects **353 tests**. The suite includes package-import integrity, role/skill routing, one-paper lifecycle, freeze/AnalysisLock/provenance contracts, and adversarial v4.6 integrity-gate tests. `GUARANTEES.yaml` remains the executable contract registry, extended by versioned `GUARANTEES*.yaml` files.
 
 ## ChatGPT operation
 
