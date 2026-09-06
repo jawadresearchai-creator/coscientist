@@ -1,0 +1,40 @@
+guarantees:
+  - id: DESIGN_HASHES_REQUIRE_DATASET_RECEIPT
+    claim: A design cannot pass using reasoning-supplied dataset hashes; exact hashes come from a DATASET_SET integrity receipt built from canonical GMS objects.
+    test: test_design_pass_uses_machine_receipts_not_answer_hashes
+
+  - id: DESIGN_POWER_REQUIRES_POWER_RECEIPT
+    claim: A design PASS requires a deterministic POWER receipt with powered=true.
+    test: test_design_pass_rejects_missing_power_receipt
+
+  - id: PREFREEZE_PASS_IS_CONJUNCTIVE
+    claim: Pre-freeze PASS requires novelty, measurement, identification, power, and access/licence/ethics all to equal PASS.
+    test: test_prefreeze_pass_is_conjunctive
+
+  - id: EXTERNAL_SOURCE_ASSERTIONS_DO_NOT_CLOSE_FEASIBILITY
+    claim: Reasoning-declared external-source verification cannot close v4.6 data feasibility; essential external data must first become a canonical materialised lake object.
+    test: test_reasoning_declared_external_source_cannot_close_feasibility
+
+  - id: LIFECYCLE_RECEIPTS_ARE_WRITE_ONCE
+    claim: Integrity receipts are tamper-evident and cannot be replaced in place with different bytes.
+    test: test_receipt_is_write_once_and_tamper_evident
+
+  - id: RESULTS_COMPLETE_REQUIRES_ANALYSIS_RECEIPT
+    claim: RESULTS_COMPLETE is reached only from a canonical ANALYSIS receipt bound to the active freeze and AnalysisLock with verified publication status.
+    test: test_analysis_receipt_is_required_for_results_completion
+
+  - id: CYCLE_CLOSES_MECHANICAL_HANDOFFS
+    claim: The scheduled cycle uses v4.6 Director routing and can create/persist freeze and AnalysisLock artifacts and consume the analysis receipt without reasoning-plane state mutation.
+    test: test_v46_workflows_use_integrity_director_and_no_historical_default
+
+  - id: ANALYSIS_HAS_NO_HISTORICAL_DEFAULT_STUDY
+    claim: The confirmatory workflow requires an explicit active paper id and no longer defaults to historical candidate C705.
+    test: test_v46_workflows_use_integrity_director_and_no_historical_default
+
+  - id: ANALYSIS_EXECUTES_LOCKED_GIT_COMMIT
+    claim: Confirmatory analysis checks out the exact Git SHA supplied at dispatch before verifying the AnalysisLock and touching outcome data.
+    test: test_v46_workflows_use_integrity_director_and_no_historical_default
+
+  - id: SECRET_BEARING_CYCLE_DOES_NOT_WRITE_PUBLIC_REPO
+    claim: The Drive-credential-bearing research cycle has contents read permission only and does not commit operational heartbeat files to the public repository.
+    test: test_v46_workflows_use_integrity_director_and_no_historical_default
