@@ -1,36 +1,28 @@
-"""Lake-bounded rescope: what happens when acquisition fails.
+"""Lake-bounded pre-freeze evolution of the single active paper.
 
-The rule this implements: an acquisition failure must not simply kill a
-candidate. The engine falls back to what the lake already holds, redefines
-whatever needs redefining so the study is feasible within those limits, and
-moves on.
+Acquisition or measurement friction does not start a new topic search. The
+active paper may evolve as many times as scientifically necessary before the
+outcome lock. A substantive change re-runs affected scientific checks rather
+than inheriting stale passes.
 
-Two hard boundaries make that safe rather than reckless.
-
-1. PRE-FREEZE ONLY. Rescoping after the outcome lock would be choosing a
-   research question to fit data whose results are already visible. Above the
-   lock it is ordinary design work; below it, it is specification search.
-   `rescope` refuses to run on a frozen candidate.
-
-2. GATES ARE RE-RUN, NOT INHERITED. A rescoped study is a DIFFERENT study. Its
-   novelty residual changes because the closest-paper set changes, and its
-   power changes because the sample changes. Carrying forward a G2 or G4 pass
-   earned by the original scope is the subtle way this feature would corrupt
-   the engine, so the proposal marks those gates dirty.
+After the outcome lock, the same scientific change would be specification
+search and is refused.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .lake import LakeCatalog, LakeDataset
 from .models import Candidate, Construct, GateId, require_mutable, utcnow
 
-MAX_RESCOPES = 2
+# Compatibility name retained for imports from older callers. v4.3 intentionally
+# has no arbitrary pre-freeze evolution-count ceiling.
+MAX_RESCOPES = None
 
 
 class RescopeRefused(RuntimeError):
-    """Raised when a rescope is attempted where it would not be legitimate."""
+    """Raised when an evolution is attempted where it would not be legitimate."""
 
 
 @dataclass
@@ -78,18 +70,11 @@ def propose_rescope(
     catalog: LakeCatalog,
     failed_constructs: list[str],
 ) -> RescopeProposal:
-    """Find a lake-bounded version of this candidate, if one exists."""
+    """Find a lake-bounded evolution of the active paper, if one exists."""
     try:
         require_mutable(candidate, "propose_rescope")
     except Exception as exc:
         raise RescopeRefused(str(exc)) from exc
-    if candidate.rescope_count >= MAX_RESCOPES:
-        return RescopeProposal(
-            candidate_id=candidate.id,
-            feasible=False,
-            unresolved=list(failed_constructs),
-            note=f"rescope budget exhausted ({MAX_RESCOPES} used)",
-        )
 
     by_name = {c.name: c for c in candidate.constructs}
     proposal = RescopeProposal(candidate_id=candidate.id, feasible=True)
@@ -104,14 +89,11 @@ def propose_rescope(
         substitute = _pick(catalog, con)
         if substitute is None:
             if con.droppable():
-                # Explicitly declared OPTIONAL by whoever specified the design.
                 proposal.dropped_controls.append(name)
             else:
-                # Everything else blocks: primary constructs, and any control
-                # not explicitly marked OPTIONAL. A covariate absorbing the
-                # principal confound is not expendable merely because its role
-                # string says "control", and this function is not entitled to
-                # decide that identification survives without it.
+                # Essential/important constructs do not disappear merely to keep
+                # the pipeline moving. If no credible substitute exists, this
+                # remains a genuine scientific/data problem for the active paper.
                 proposal.unresolved.append(name)
                 proposal.feasible = False
             continue
@@ -131,25 +113,21 @@ def propose_rescope(
         )
 
     if proposal.feasible and (proposal.swaps or proposal.dropped_controls):
-        # A rescoped study is a different study. Novelty and power must be
-        # re-adjudicated; inheriting them is how this feature would rot.
+        # Focus remains on the same active paper, but a substantive design/data
+        # evolution cannot inherit old novelty/power adjudications.
         proposal.gates_to_rerun = [GateId.G2.value, GateId.G4.value]
-        proposal.note = "lake-bounded rescope available; G2 and G4 must be re-run"
+        proposal.note = "lake-bounded evolution available; novelty closure and power must be re-run"
     elif proposal.feasible:
         proposal.feasible = False
-        proposal.note = "nothing to rescope"
+        proposal.note = "nothing to evolve"
 
     if not proposal.feasible and not proposal.note:
-        proposal.note = "no lake substitute for a primary construct"
+        proposal.note = "no lake substitute for an essential construct"
     return proposal
 
 
 def apply_rescope(candidate: Candidate, proposal: RescopeProposal) -> Candidate:
-    """Mutate the candidate onto its lake-bounded scope, preserving lineage."""
-    # A proposal's validity is time-dependent. One generated legitimately
-    # before the freeze could be applied after it, because only propose_rescope
-    # checked the lock. The guard belongs on every mutating call, not the
-    # first one in the sequence.
+    """Apply a valid pre-freeze evolution while preserving one-paper lineage."""
     try:
         require_mutable(candidate, "apply_rescope")
     except Exception as exc:
@@ -172,11 +150,11 @@ def apply_rescope(candidate: Candidate, proposal: RescopeProposal) -> Candidate:
         candidate.constructs = [c for c in candidate.constructs if c.name not in dropped]
 
     candidate.rescope_count += 1
-    candidate.status = "RESCOPED"
+    candidate.status = "EVOLVED"
     candidate.log(
-        "rescope",
+        "evolve",
         proposal=proposal.to_dict(),
-        rescope_count=candidate.rescope_count,
+        evolution_count=candidate.rescope_count,
         gates_dirty=proposal.gates_to_rerun,
     )
     return candidate
