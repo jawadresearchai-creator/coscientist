@@ -77,14 +77,13 @@ jobs:
             echo "blocked=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Enforce focused next action
+      - name: Run the deterministic stages (single-paper focus)
         if: steps.blockcheck.outputs.blocked != 'true'
         run: |
           python -m coscientist.single_paper --state state/single_paper.json next-action
           echo "No competing topic generation is run while a viable paper is active."
 
       - name: Persist canonical single-paper state to Drive
-        if: always()
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
