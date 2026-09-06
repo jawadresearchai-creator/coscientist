@@ -142,7 +142,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-The v4.6.1 tree currently collects **358 tests**. The suite covers package integrity, one-paper governance, explicit owner withdrawal, role/skill routing, freeze/AnalysisLock/provenance contracts, and adversarial integrity gates.
+The v4.6.1 tree currently collects **359 tests**. The suite covers package integrity, one-paper governance, explicit owner withdrawal, role/skill routing, freeze/AnalysisLock/provenance contracts, and adversarial integrity gates.
 
 ## ChatGPT operation
 
