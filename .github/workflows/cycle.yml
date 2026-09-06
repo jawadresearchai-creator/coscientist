@@ -3,7 +3,8 @@
 # The cycle owns no scientific judgment and never runs a candidate tournament.
 # It refreshes the lake view, reconciles the one canonical paper plus Director
 # state from Drive, applies at most one matching reasoning-plane answer, and
-# persists exactly one next research action.
+# persists exactly one next research action. V4.5 additionally attaches and
+# enforces role/skill execution profiles around reasoning actions.
 
 name: cycle
 
@@ -17,7 +18,10 @@ on:
     branches: [main]
     paths:
       - "src/coscientist/director.py"
+      - "src/coscientist/director_v45.py"
       - "src/coscientist/director_drive.py"
+      - "agents/**"
+      - "skills/**"
       - ".github/workflows/cycle.yml"
       - "policy.yaml"
 
@@ -96,7 +100,7 @@ jobs:
       - name: Apply matching Director answer if present
         id: director_apply
         run: |
-          python -m coscientist.director \
+          python -m coscientist.director_v45 \
             --state state/single_paper.json \
             --director state/director.json \
             --catalog state/gms_lake_catalog.json \
@@ -105,13 +109,13 @@ jobs:
       - name: Run the deterministic stages (Research Director)
         id: director_ensure
         run: |
-          python -m coscientist.director \
+          python -m coscientist.director_v45 \
             --state state/single_paper.json \
             --director state/director.json \
             --catalog state/gms_lake_catalog.json \
             ensure --action-out state/director_action.json
           echo
-          python -m coscientist.director \
+          python -m coscientist.director_v45 \
             --state state/single_paper.json \
             --director state/director.json \
             --catalog state/gms_lake_catalog.json \
