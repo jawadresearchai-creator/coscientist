@@ -1,0 +1,208 @@
+name: Astra Open Data Stage
+
+# One-shot, outcome-blind acquisition for MS-ASTRA-REVALUE-2026.
+# Downloads public/free source files without parsing event-window returns and
+# writes them to the paper's Drive state folder, outside the GMS lake.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/astra-open-data-stage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astra-open-data-stage-20260906
+  cancel-in-progress: false
+
+env:
+  PAPER_ID: MS-ASTRA-REVALUE-2026
+  SNAPSHOT_ID: open_data_20260906
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install CoScientist Drive client
+        run: pip install -e .
+
+      - name: Download public source files without inspecting outcome values
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+
+          fetch() {
+            local out="$1"; shift
+            echo "downloading $out"
+            curl --fail --location --silent --show-error \
+              --retry 4 --retry-all-errors --connect-timeout 30 \
+              --max-time 5400 "$@" -o "data/$out"
+            test -s "data/$out"
+          }
+
+          # Current U.S. daily securities archive. No rows are printed or parsed.
+          # Try Stooq's static host first, then its documented bulk-data host.
+          if ! fetch stooq_d_us_txt_20260906.zip \
+              "https://static.stooq.com/db/h/d_us_txt.zip"; then
+            rm -f data/stooq_d_us_txt_20260906.zip
+            fetch stooq_d_us_txt_20260906.zip \
+              "https://stooq.com/db/h/d_us_txt.zip"
+          fi
+
+          # Fail closed if the response is an HTML interstitial instead of the bulk archive.
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          p=Path('data/stooq_d_us_txt_20260906.zip')
+          assert p.stat().st_size > 100_000_000, f"Stooq archive unexpectedly small: {p.stat().st_size}"
+          assert zipfile.is_zipfile(p), "Stooq response is not a ZIP archive"
+          print(f"Stooq archive acquired; bytes={p.stat().st_size}; content rows not inspected")
+          PY
+
+          # Official issuer/security identifiers.
+          fetch sec_company_tickers_exchange_20260906.json \
+            "https://www.sec.gov/files/company_tickers_exchange.json" \
+            -H "User-Agent: Management Science CoScientist research contact jawadresearch.ai@gmail.com" \
+            -H "Referer: https://www.sec.gov/"
+          fetch sec_company_tickers_20260906.json \
+            "https://www.sec.gov/files/company_tickers.json" \
+            -H "User-Agent: Management Science CoScientist research contact jawadresearch.ai@gmail.com" \
+            -H "Referer: https://www.sec.gov/"
+
+          # Public symbol directories. These are useful for security-type filtering.
+          fetch nasdaqlisted_20260906.txt \
+            "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+          fetch otherlisted_20260906.txt \
+            "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+
+          # Pre-period academic factor files. As of acquisition these may lag the
+          # September event; they are not used to inspect Astra-window outcomes.
+          fetch ff3_daily_20260906.zip \
+            "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_daily_CSV.zip"
+          fetch ff5_daily_20260906.zip \
+            "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_daily_CSV.zip"
+          fetch momentum_daily_20260906.zip \
+            "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Momentum_Factor_daily_CSV.zip"
+
+          # Current market-state covariate/robustness source.
+          fetch cboe_vix_history_20260906.csv \
+            "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
+
+          # Immutable official event-document snapshots. Failure of one archive
+          # page does not invalidate the market-data acquisition itself.
+          for spec in \
+            "openai_astra_aug07_2026.html|https://openai.com/index/responding-next-frontier-critical-cyber-capabilities/" \
+            "openai_astra_sep01_2026.html|https://openai.com/index/path-to-astra/" \
+            "openai_astra_sep03_2026.html|https://openai.com/index/gpt-6-astra/" \
+            "openai_astra_release_notes_20260906.html|https://openai.com/products/release-notes/"
+          do
+            name="${spec%%|*}"
+            url="${spec#*|}"
+            if ! fetch "$name" "$url"; then
+              rm -f "data/$name"
+              echo "optional event-document snapshot failed: $url"
+            fi
+          done
+
+      - name: Build acquisition manifest without reading return rows
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          source_urls = {
+            'stooq_d_us_txt_20260906.zip': 'https://static.stooq.com/db/h/d_us_txt.zip',
+            'sec_company_tickers_exchange_20260906.json': 'https://www.sec.gov/files/company_tickers_exchange.json',
+            'sec_company_tickers_20260906.json': 'https://www.sec.gov/files/company_tickers.json',
+            'nasdaqlisted_20260906.txt': 'https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt',
+            'otherlisted_20260906.txt': 'https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt',
+            'ff3_daily_20260906.zip': 'https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_daily_CSV.zip',
+            'ff5_daily_20260906.zip': 'https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_daily_CSV.zip',
+            'momentum_daily_20260906.zip': 'https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Momentum_Factor_daily_CSV.zip',
+            'cboe_vix_history_20260906.csv': 'https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv',
+            'openai_astra_aug07_2026.html': 'https://openai.com/index/responding-next-frontier-critical-cyber-capabilities/',
+            'openai_astra_sep01_2026.html': 'https://openai.com/index/path-to-astra/',
+            'openai_astra_sep03_2026.html': 'https://openai.com/index/gpt-6-astra/',
+            'openai_astra_release_notes_20260906.html': 'https://openai.com/products/release-notes/',
+          }
+          files=[]
+          for p in sorted(Path('data').iterdir()):
+            if not p.is_file():
+              continue
+            h=hashlib.sha256()
+            with p.open('rb') as fh:
+              while True:
+                b=fh.read(8*1024*1024)
+                if not b: break
+                h.update(b)
+            files.append({
+              'name': p.name,
+              'bytes': p.stat().st_size,
+              'sha256': h.hexdigest(),
+              'source_url': source_urls.get(p.name),
+            })
+          manifest={
+            'paper_id': 'MS-ASTRA-REVALUE-2026',
+            'snapshot_id': 'open_data_20260906',
+            'acquired_at_utc': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+            'outcome_inspected': 'NO',
+            'policy': 'Acquisition and hashing only; no Astra-event return rows parsed, printed, summarized, or analyzed before freeze.',
+            'files': files,
+          }
+          Path('data/acquisition_manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding='utf-8')
+          print(json.dumps({'paper_id': manifest['paper_id'], 'snapshot_id': manifest['snapshot_id'], 'outcome_inspected': 'NO', 'file_count': len(files)}, indent=2))
+          PY
+
+      - name: Persist immutable snapshot to paper Drive folder
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from coscientist.drive import DriveClient, DriveCredentials, FOLDER_MIME
+          from coscientist.study_state_drive import ensure_study_folder
+
+          client=DriveClient(DriveCredentials.from_env())
+          study=ensure_study_folder(client, os.environ['GDRIVE_STATE_FOLDER_ID'], os.environ['PAPER_ID'])
+          name=os.environ['SNAPSHOT_ID']
+          hits=[x for x in client.list_folder(study) if x.get('name')==name and x.get('mimeType')==FOLDER_MIME]
+          if len(hits)>1:
+            raise RuntimeError(f"ambiguous Drive staging folder {name}")
+          folder=hits[0]['id'] if hits else client.create_folder(name, study)
+
+          existing={x.get('name'):x for x in client.list_folder(folder)}
+          paths=sorted(p for p in Path('data').iterdir() if p.is_file())
+          for p in paths:
+            if p.name in existing:
+              raise RuntimeError(f"immutable staging object already exists: {p.name}")
+            fid=client.upload(str(p), folder, p.name)
+            if not fid:
+              raise RuntimeError(f"Drive returned no file id for {p.name}")
+            print(f"uploaded {p.name} bytes={p.stat().st_size}")
+          print(f"snapshot_folder_id={folder}")
+          PY
+
+      - name: Upload manifest as workflow evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: astra-open-data-manifest-${{ github.run_id }}
+          path: data/acquisition_manifest.json
+          if-no-files-found: ignore
+          retention-days: 30
