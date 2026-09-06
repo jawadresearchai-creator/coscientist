@@ -1,4 +1,4 @@
-"""Package-level integrity. These are the tests that catch what unit tests cannot."""
+"""Package-level integrity. These tests catch what isolated unit tests cannot."""
 import importlib
 import pkgutil
 import re
@@ -18,18 +18,11 @@ def _modules():
 
 @pytest.mark.parametrize("name", _modules())
 def test_every_production_module_imports(name):
-    """The regression test for a module nobody imports.
-
-    `bq.py` kept `from .budget import Ledger` after that class was renamed, so
-    the whole BigQuery route was unusable across two releases while the suite
-    reported everything green -- because no test imported it. A green suite
-    that never loads a module says nothing about that module.
-    """
+    """Every production module must import; an unimported module can hide for releases."""
     importlib.import_module(f"coscientist.{name}")
 
 
 def test_version_is_declared_in_exactly_one_place():
-    """A package that reported 4.0.0, 4.0.1 and 4.1.0 at once cannot do provenance."""
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert pyproject["project"].get("version") is None, "version must be dynamic"
     attr = pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"]
@@ -59,17 +52,33 @@ def test_readme_test_count_is_not_stale():
             f"README says {claimed.group(1)}, suite has {actual.group(1)}")
 
 
-def test_every_guarantee_names_a_real_test():
-    """Close the loop that four reviews kept finding.
+def _guarantee_files() -> list[Path]:
+    """Base guarantees plus versioned operating-model extensions.
 
-    Every guarantee the documentation claims is listed in GUARANTEES.yaml and
-    names the test that enforces it. Adding a claim without adding a test now
-    breaks the build, rather than waiting for a reviewer to notice that the
-    code implements a narrower version of the promise.
+    Keeping the historical registry immutable-ish makes migrations reviewable,
+    while all files are still treated as one executable registry.
     """
+    return sorted(ROOT.glob("GUARANTEES*.yaml"))
+
+
+def _guarantees():
     import yaml
-    spec = yaml.safe_load((ROOT / "GUARANTEES.yaml").read_text())
-    guarantees = spec["guarantees"]
+    guarantees = []
+    for path in _guarantee_files():
+        spec = yaml.safe_load(path.read_text()) or {}
+        guarantees.extend(spec.get("guarantees", []))
+    return guarantees
+
+
+def test_guarantee_ids_are_unique_across_registry_files():
+    ids = [g["id"] for g in _guarantees()]
+    duplicates = sorted({gid for gid in ids if ids.count(gid) > 1})
+    assert not duplicates, f"duplicate guarantee ids: {duplicates}"
+
+
+def test_every_guarantee_names_a_real_test():
+    """Every claimed deterministic guarantee names the test that enforces it."""
+    guarantees = _guarantees()
     assert len(guarantees) >= 25
 
     defined = set()
@@ -81,19 +90,13 @@ def test_every_guarantee_names_a_real_test():
 
 
 def test_every_guarantee_is_well_formed():
-    import yaml
-    for g in yaml.safe_load((ROOT / "GUARANTEES.yaml").read_text())["guarantees"]:
+    for g in _guarantees():
         assert g["id"].isupper()
         assert g["claim"].endswith("."), f"{g['id']}: claim should be a sentence"
         assert g["test"].startswith("test_")
 
 
 GUARANTEE_REF = re.compile(r"\[GUARANTEE: ([A-Z0-9_]+)\]")
-
-
-def _guarantees():
-    import yaml
-    return yaml.safe_load((ROOT / "GUARANTEES.yaml").read_text())["guarantees"]
 
 
 def _doc_references():
@@ -107,13 +110,6 @@ def _doc_references():
 
 
 def test_every_documented_guarantee_reference_resolves():
-    """The registry, made mechanically true in the first direction.
-
-    `test_every_guarantee_names_a_real_test` stops a guarantee from naming a
-    test that does not exist. This stops the documentation from citing a
-    guarantee that does not exist -- including the two `}` typos and the
-    digit-blind regex that this test caught on its first run.
-    """
     ids = {g["id"] for g in _guarantees()}
     dangling = {gid: sorted(where) for gid, where in _doc_references().items()
                 if gid not in ids}
@@ -121,14 +117,7 @@ def test_every_documented_guarantee_reference_resolves():
 
 
 def test_every_guarantee_is_claimed_somewhere():
-    """And in the second direction.
-
-    A guarantee nobody claims is a test with no promise attached -- which is
-    how the registry would rot into a parallel document that drifts from the
-    documentation it was built to police. Five reviews found the same shape
-    each time: the docs claim a guarantee, the code implements a narrower one.
-    Both directions have to be mechanical for that to stop recurring.
-    """
+    """A test with no documented promise is another form of registry drift."""
     referenced = set(_doc_references())
     unclaimed = sorted({g["id"] for g in _guarantees()} - referenced)
     assert not unclaimed, (
