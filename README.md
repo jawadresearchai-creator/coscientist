@@ -135,7 +135,7 @@ Humanizer is mandatory for manuscript drafting/revision/final polish but control
 
 ```bash
 pip install -e ".[dev]"
-pytest -q            # 339 tests expected after the v4.5 reasoning-layer migration
+pytest -q            # 340 tests expected after the v4.5 reasoning-layer migration
 ```
 
 The suite includes package-import integrity checks, so every production module must import successfully. `GUARANTEES.yaml` remains the executable contract registry, extended by versioned `GUARANTEES*.yaml` files.
