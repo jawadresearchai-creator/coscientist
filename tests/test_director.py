@@ -247,7 +247,8 @@ def _design_pass(action_id):
 
 def _audit_pass(action_id):
     return {
-        "action_id": action_id, "decision": "PASS", "findings": [],
+        "action_id": action_id, "decision": "PASS",
+        "findings": ["No blocking findings after the consolidated hostile review."],
         "novelty_closure": "PASS", "measurement": "PASS", "identification": "PASS",
         "power": "PASS", "access_licence_ethics": "PASS",
     }
