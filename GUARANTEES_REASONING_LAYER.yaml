@@ -1,0 +1,24 @@
+guarantees:
+  - id: REASONING_ACTIONS_DECLARE_EXECUTION_PROFILE
+    claim: Every reasoning action declares and persists its required execution role and skill versions.
+    test: test_action_profile_is_persisted_and_serialized
+
+  - id: AUDIT_REQUIRES_INDEPENDENT_ROLE
+    claim: Pre-freeze audit cannot be satisfied under the normal scientific reasoning role.
+    test: test_prefreeze_audit_rejects_normal_reasoning_role
+
+  - id: AUDIT_REQUIRES_FRESH_CONTEXT_ATTESTATION
+    claim: Independent audit actions require an explicit fresh-context execution attestation.
+    test: test_audit_requires_fresh_context_attestation
+
+  - id: REQUIRED_REASONING_SKILLS_ARE_ENFORCED
+    claim: A reasoning answer is rejected when it omits any skill required by the Director execution profile.
+    test: test_literature_answer_requires_declared_skills
+
+  - id: MECHANICAL_ACTIONS_USE_NO_REASONING_SKILLS
+    claim: Freeze creation and analysis routing remain deterministic actions that cannot be satisfied by a reasoning answer.
+    test: test_mechanical_action_profile_is_deterministic_and_skill_free
+
+  - id: LEGACY_PENDING_ACTIONS_PRESERVE_IDENTITY
+    claim: A V4.4 pending action gains its V4.5 execution profile without changing its existing action id.
+    test: test_legacy_pending_action_is_enriched_without_recreation
