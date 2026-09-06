@@ -141,6 +141,29 @@ uses strict result-token provenance and figures are bound to result tokens. The
 manuscript-stage audit must also verify references and claim support. Final
 submission readiness requires every mandated final-audit check to pass.
 
+## Humanizer manuscript-style rule
+
+`skills/humanizer/SKILL.md` is the mandatory writing-style policy for manuscript
+prose. Before drafting, rewriting, or final-polishing any manuscript section, the
+reasoning plane must read and apply that skill, including its sentence-level,
+paragraph-level, section-level, and whole-manuscript audits when applicable.
+
+Humanizer controls **expression only**. It may improve naturalness, directness,
+rhythm, diction, paragraph architecture, transition density and rhetorical
+restraint, but it must not independently change scientific meaning, study logic,
+methods, numbers, result tokens, citations, evidence support, claim strength,
+limitations, or the frozen design. It must never fabricate mistakes to appear
+human.
+
+Scientific validity, provenance, citation verification, statistical review,
+novelty and hostile audit remain separate CoScientist responsibilities. When a
+scientific repair changes manuscript meaning, rerun Humanizer only after the
+scientific repair is complete. If Humanizer conflicts with evidence integrity,
+provenance, journal requirements or frozen science, those constraints win.
+
+The detailed integration boundary is documented in
+`docs/HUMANIZER_INTEGRATION.md`.
+
 ## GitHub / Drive boundary
 
 GitHub contains code, tests, workflows and registries. Google Drive contains
@@ -158,5 +181,6 @@ scientific review.
 ## Canonical handbook
 
 `docs/SINGLE_PAPER_RESEARCH_HANDBOOK.md` is the human-readable operating
-handbook. If an older Management Sciences candidate/court/handoff document
-conflicts with this contract, V4.4 wins for all active work.
+handbook. `docs/CHATGPT_START_HERE.md` is the new-chat bootstrap guide. If an
+older Management Sciences candidate/court/handoff document conflicts with this
+contract, V4.4 wins for all active work.
