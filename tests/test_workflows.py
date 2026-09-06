@@ -34,8 +34,8 @@ def test_every_workflow_is_valid_yaml(path):
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: Path(p).name)
-def test_every_bash_run_block_is_valid_shell(path):
-    """`bash -n` on every Bash-compatible `run:` body.
+def test_every_run_block_is_valid_shell(path):
+    """`bash -n` every Bash-compatible `run:` body.
 
     Workflows may explicitly select PowerShell (`shell: pwsh`); feeding that
     script to Bash is not validation, it is a category error. Default-shell and
