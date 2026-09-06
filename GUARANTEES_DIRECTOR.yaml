@@ -1,0 +1,42 @@
+# Executable guarantees for the v4.4 persistent single-paper Research Director.
+
+guarantees:
+  - id: DIRECTOR_ONE_ACTION_ONLY
+    claim: Repeated cycles preserve one pending Director action instead of creating duplicate work.
+    test: test_director_emits_one_idempotent_bounded_discovery_action
+
+  - id: DIRECTOR_DISCOVERY_IS_BOUNDED
+    claim: Fresh discovery may return at most three serious topics before exactly one is selected.
+    test: test_discovery_rejects_more_than_three_topics
+
+  - id: DIRECTOR_ADMISSION_LOCKS_DISCOVERY
+    claim: After one topic is admitted the Director advances that paper rather than opening another discovery round.
+    test: test_one_topic_is_admitted_and_broad_discovery_stops
+
+  - id: DIRECTOR_REPAIRS_SAME_PAPER
+    claim: An unresolved essential data need triggers repair of the active paper rather than topic replacement.
+    test: test_unresolved_essential_data_repairs_same_paper
+
+  - id: DIRECTOR_LAKE_TIER_PRIORITY
+    claim: Among suitable lake holdings the Director prefers research-ready data over raw data.
+    test: test_lake_resolution_prefers_research_tier_over_raw
+
+  - id: DIRECTOR_FREEZE_IS_MECHANICAL
+    claim: A pre-freeze review pass does not mark the paper frozen until a real write-once freeze manifest is created.
+    test: test_prefreeze_pass_creates_real_freeze_before_frozen_stage
+
+  - id: DIRECTOR_STALE_ANSWER_IS_SAFE
+    claim: An answer for an old action ID cannot mutate the current paper or Director action.
+    test: test_stale_answer_is_ignored_instead_of_corrupting_new_action
+
+  - id: DIRECTOR_NEW_PAPER_RESETS_CONTEXT
+    claim: A newly admitted paper does not inherit Director records from the previous paper.
+    test: test_director_resets_records_when_a_new_paper_is_admitted
+
+  - id: DIRECTOR_ANSWER_INBOX_IS_UNIQUE
+    claim: Multiple Drive answer files with the same canonical name are refused as ambiguous.
+    test: test_duplicate_drive_answer_files_are_refused
+
+  - id: DIRECTOR_FINAL_AUDIT_IS_CONJUNCTIVE
+    claim: Submission readiness requires every mandated final-audit check to pass.
+    test: test_final_audit_requires_every_mandated_check_to_pass
