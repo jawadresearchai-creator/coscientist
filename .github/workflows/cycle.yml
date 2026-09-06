@@ -18,7 +18,7 @@ on:
     paths:
       - "src/coscientist/director.py"
       - "src/coscientist/director_drive.py"
-      - ".github/workflows/cycle.yml
+      - ".github/workflows/cycle.yml"
       - "policy.yaml"
 
 permissions:
