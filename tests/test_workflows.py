@@ -6,8 +6,8 @@ plain YAML scalar is a syntax error, so GitHub would have refused to load the
 file at all. The suite was green throughout, because the suite tested Python
 and the workflows are YAML and shell.
 
-These tests close that gap, and encode the two structural rules that the
-workflows exist to enforce.
+These tests close that gap, and encode the structural rules that the workflows
+exist to enforce.
 """
 import glob
 import re
@@ -35,17 +35,23 @@ def test_every_workflow_is_valid_yaml(path):
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: Path(p).name)
 def test_every_run_block_is_valid_shell(path):
-    """`bash -n` on every `run:` body.
+    """`bash -n` every Bash-compatible `run:` body.
 
-    A shell error inside a workflow surfaces only when the job runs, which for
-    a scheduled workflow can be days later and for the analysis workflow is
-    forty minutes into a build.
+    Workflows may explicitly select PowerShell (`shell: pwsh`); feeding that
+    script to Bash is not validation, it is a category error. Default-shell and
+    explicit Bash/sh steps are syntax-checked here; non-Bash shells are left to
+    their own workflow/runtime checks.
     """
     doc = yaml.safe_load(Path(path).read_text())
     for step in _steps(doc):
         script = step.get("run")
         if not script:
             continue
+        shell = (step.get("shell") or "").strip().lower()
+        if shell:
+            command = shell.split()[0]
+            if command not in {"bash", "sh"}:
+                continue
         # ${{ }} expressions are substituted by Actions before bash sees them;
         # replace with a literal so the parse reflects the real shape.
         cleaned = re.sub(r"\$\{\{[^}]*\}\}", "EXPR", script)
@@ -76,6 +82,23 @@ def test_no_workflow_commits_research_state_to_git(path):
             assert token not in line, (
                 f"{Path(path).name} commits {token} to git: {line.strip()}"
             )
+
+
+def test_cycle_never_pushes_canonical_state_after_a_failed_prior_step():
+    """Canonical Drive state must fail closed.
+
+    `if: always()` on the state-push step can overwrite or recreate authoritative
+    state after a failed pull/validation. The push therefore uses normal GitHub
+    Actions success semantics and never opts into `always()` or `failure()`.
+    """
+    doc = yaml.safe_load((ROOT / ".github/workflows/cycle.yml").read_text())
+    pushes = [s for s in _steps(doc)
+              if "single_paper_drive push" in (s.get("run", "") or "")]
+    assert len(pushes) == 1, "cycle must have exactly one canonical-state push"
+    cond = (pushes[0].get("if") or "").replace(" ", "").lower()
+    assert "always()" not in cond and "failure()" not in cond, (
+        "canonical state must not be pushed after a failed pull/validation step"
+    )
 
 
 def test_analysis_runs_its_stages_in_the_only_safe_order():
