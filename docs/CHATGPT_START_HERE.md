@@ -1,94 +1,80 @@
 # Using the Management Science CoScientist from ChatGPT
 
-The CoScientist is designed so that a new ChatGPT conversation does not need old chat memory. GitHub contains the operating code, role contracts, skills and constitution; Google Drive contains the canonical scientific and Director state.
+The CoScientist is designed so a new ChatGPT conversation does not need old chat memory. GitHub contains operating code, role contracts, skills and policy; Google Drive contains canonical scientific state, Director state, and immutable per-paper lifecycle artifacts.
 
-## Recommended ChatGPT setup
+## Recommended setup
 
-Use a dedicated ChatGPT Project named **Management Science CoScientist**. The Project is a convenience layer for organization and persistent instructions; it is **not** the scientific source of truth.
+Use one ChatGPT Project named **Management Science CoScientist**. The Project is an organizational interface, not the scientific source of truth.
 
-Keep GitHub and Google Drive connected in ChatGPT. The authoritative sources remain:
+Authoritative sources:
 
-- GitHub repository: `jawadresearchai-creator/coscientist`
-- GitHub constitution: `AGENTS.md`
-- Reasoning-layer map: `docs/REASONING_LAYER.md`
-- Scientific reasoning role: `agents/scientific_reasoning/AGENT.md`
-- Independent audit role: `agents/independent_audit/AGENT.md`
-- Skills: `skills/*/SKILL.md`
-- Google Drive root: `MANAGEMENT_SCIENCES_COSCIENTIST_V4`
-- Drive state: `MANAGEMENT_SCIENCES_COSCIENTIST_V4/state/single_paper.json`
-- Drive Director: `MANAGEMENT_SCIENCES_COSCIENTIST_V4/state/director.json`
-- Drive reasoning inbox: `MANAGEMENT_SCIENCES_COSCIENTIST_V4/state/director_answer.json`
+- GitHub: `jawadresearchai-creator/coscientist`
+- constitution: `AGENTS.md`
+- reasoning map: `docs/REASONING_LAYER.md`
+- reasoning roles: `agents/*/AGENT.md`
+- skills: `skills/*/SKILL.md`
+- Drive root: `MANAGEMENT_SCIENCES_COSCIENTIST_V4`
+- Drive control state: `state/single_paper.json`, `state/director.json`, `state/director_answer.json`
+- immutable paper artifacts: `state/<paper_id>/...`
 
-Do not use Project memory or an old chat as authority when it conflicts with GitHub/Drive.
+Do not let Project memory or old chats override GitHub/Drive.
 
-## V4.5 role rule
+## V4.6 operating rule
 
-Every pending Director action has an `execution_profile` that names:
+Every pending Director action carries an `execution_profile` naming the role, exact skill versions and fresh-context requirement. V4.6 also carries `integrity_requirements` wherever mechanically knowable evidence must come from deterministic receipts.
 
-- the required role;
-- the exact required skill versions;
-- whether a fresh reasoning context is required.
+Normal reasoning actions use `SCIENTIFIC_REASONING`. Pre-freeze and final audits use `INDEPENDENT_AUDIT` with a genuinely fresh context. Freeze and analysis routing are `DETERMINISTIC` and must never be answered by fabricating an LLM PASS.
 
-Normal research actions use `SCIENTIFIC_REASONING`. Pre-freeze and final audits use `INDEPENDENT_AUDIT` and require a genuinely fresh context. Mechanical freeze and analysis actions use `DETERMINISTIC` and must not be answered as LLM judgment.
+For design/final gates, read the canonical receipt artifacts named by the action. Do not type replacement hashes, power verdicts, provenance results or reproducibility verdicts into an answer from model judgment.
 
-## Put this in the ChatGPT Project instructions
+## Recommended Project instructions
 
 ```text
 This Project operates the Management Science CoScientist.
 
-Canonical GitHub repository:
+Canonical repository:
 jawadresearchai-creator/coscientist
 
-At the beginning of any research-operating chat, read the live canonical state rather than relying on chat memory:
-1. Read AGENTS.md from the repository.
-2. Read docs/REASONING_LAYER.md.
-3. Read MANAGEMENT_SCIENCES_COSCIENTIST_V4/state/single_paper.json from Google Drive.
-4. Read MANAGEMENT_SCIENCES_COSCIENTIST_V4/state/director.json from Google Drive.
-5. Determine the exact current action_id and its execution_profile.
-6. If the role is SCIENTIFIC_REASONING, read agents/scientific_reasoning/AGENT.md and every required skills/*/SKILL.md at the specified versions.
-7. If the role is INDEPENDENT_AUDIT, do not audit in the same reasoning context that developed/wrote the paper. Start a fresh audit context, read agents/independent_audit/AGENT.md and every required audit skill, then attest fresh_context_attested=true in the answer.
-8. If the role is DETERMINISTIC, do not fabricate a reasoning answer; execute the named mechanical workflow/tooling.
-9. Inspect the current GMS data-lake state when the pending Director action depends on data.
-10. Use current web/literature evidence when the action requires current scholarship, novelty closure, journal requirements or official public information.
-11. Execute only the current Director action_id.
-12. Write one action-ID-bound director_answer.json with execution_role and skills_used metadata and let the deterministic Director apply it; never advance lifecycle state manually.
-13. Do not reopen broad topic discovery while an admitted paper remains viable.
-14. Treat ordinary failures as repair work; retire only for an enumerated genuine blocker.
-15. Humanizer controls manuscript expression only and must never change science, numbers, citations, claim support, limitations or frozen design.
+At the beginning of every research-operating chat:
+1. Read live AGENTS.md and docs/REASONING_LAYER.md.
+2. Read Drive state/single_paper.json and state/director.json.
+3. Determine the exact current action_id, execution_profile and integrity_requirements.
+4. Load the required role contract and every required skill at its declared version.
+5. If INDEPENDENT_AUDIT is required, use a fresh reasoning context and attest fresh_context_attested=true only when that is actually true.
+6. If DETERMINISTIC is required, do not write an LLM answer; allow/run the mechanical workflow.
+7. Use the GMS lake first. An external source may be researched for feasibility, but it cannot close an essential v4.6 data requirement until it has been materialized/registered as a canonical hashable lake object.
+8. For DESIGN_CLOSURE, treat canonical DATASET_SET and POWER receipts as authoritative. Never invent or substitute SHA-256 values or a power PASS.
+9. For PRE_FREEZE_AUDIT, PASS is conjunctive across novelty, measurement, identification, power, and access/licence/ethics.
+10. For RESULTS_COMPLETE, require the canonical ANALYSIS receipt bound to the active freeze and AnalysisLock.
+11. For FINAL_AUDIT, consume FINAL_AUDIT_EVIDENCE for mechanically knowable numeric-provenance and reproducibility dimensions.
+12. Use current literature/web evidence when the pending action requires fresh scholarship, novelty closure, journal requirements or official facts.
+13. Execute only the current action_id and return one action-bound director_answer.json through the Director. Never mutate lifecycle state manually.
+14. Do not reopen topic discovery while the admitted paper remains viable. Ordinary failures are same-paper repair.
+15. Humanizer changes expression only; it cannot change science, numbers, citations, methods, claim support, limitations or frozen design.
 
-Continue autonomously through the current paper unless a genuine human decision is scientifically necessary. Report completed phase, current state, blocker if any, and next logical step.
+Continue autonomously through currently executable steps. Report current paper, stage, completed evidence, blocker if any, and exact next step.
 ```
 
-## What to write in a new chat inside the Project
-
-For normal continuation, this short prompt is enough:
+## New-chat continuation prompt
 
 ```text
-Resume the Management Science CoScientist from its live canonical GitHub and Google Drive state. Read AGENTS.md, docs/REASONING_LAYER.md, single_paper.json and director.json first. Determine the current action_id and execution_profile, load the required role contract and exact skill versions, execute only that action, persist the validated answer through the canonical workflow, and continue with the next logical step. Do not rely on old chat memory and do not reopen topic discovery unless canonical state permits it.
+Resume the Management Science CoScientist from its live canonical GitHub and Google Drive state. Read AGENTS.md, docs/REASONING_LAYER.md, single_paper.json and director.json first. Determine the current action_id, execution_profile and integrity_requirements, load the required role/skills, execute only that action, and persist valid work through the v4.6 Director/receipt workflow. Do not rely on old chat memory and do not reopen topic discovery unless canonical state permits it.
 ```
 
-If the current action requires `INDEPENDENT_AUDIT`, start that audit in a fresh chat/context rather than continuing in the development/writing context. The fresh audit must still reconnect to the same GitHub/Drive state and answer the same action ID.
+If the current action requires `INDEPENDENT_AUDIT`, start it in a fresh chat/context connected to the same canonical state.
 
-If you want only status and no state changes:
+For status only:
 
 ```text
-Read the live Management Science CoScientist state from GitHub and Google Drive and give me the current paper, stage, pending Director action, execution role, required skills, blockers, completed evidence, and exact next step. Do not mutate anything.
+Read the live Management Science CoScientist GitHub/Drive state and report the active paper, lifecycle stage, pending action, execution role, required skills, integrity receipts present/missing, blockers, and exact next step. Do not mutate anything.
 ```
 
-If you want the system to proceed as far as possible in the current turn:
+For maximum autonomous continuation:
 
 ```text
-Resume the Management Science CoScientist from canonical state and proceed autonomously through every currently executable step of the active paper. Obey each Director execution_profile, use the GMS lake first, current official/web sources for genuine gaps, and the required skills at their declared versions. Stop when the next step requires a fresh independent-audit context, a real external dependency, genuine scientific blocker, or required human decision. Persist every valid state transition through the Director.
+Resume the Management Science CoScientist from canonical state and execute every currently available step of the active paper. Obey the Director execution_profile and integrity_requirements, use GMS lake data first, use current public evidence for genuine gaps, and let deterministic v4.6 workflows handle freeze/AnalysisLock/analysis receipts. Stop only when the next action genuinely requires a fresh independent-audit context, an external dependency, a scientific blocker, or a human decision.
 ```
-
-## Starting from an ordinary new ChatGPT chat
-
-A Project is recommended but not required. In a normal new chat, paste the same continuation prompt. Because the source of truth is GitHub/Drive, the new chat can reconstruct the current research state without the previous conversation.
-
-## When to start a separate chat
-
-Start a new chat when the current conversation becomes long, when you want a clean reasoning context, or whenever the Director requires `INDEPENDENT_AUDIT`. Do not create a second research state or second CoScientist. Every chat must reconnect to the same canonical GitHub/Drive state before acting.
 
 ## One-paper rule
 
-The Management Science kernel develops one admitted paper at a time. A new topic is discovered only when no paper is active, the current paper is submission-ready, or it has been retired for a genuine blocker. Starting a new ChatGPT chat does not start a new paper.
+A new ChatGPT chat is a new reasoning context, not a new paper. Topic discovery reopens only when no paper is active, the current paper is `SUBMISSION_READY`, or it is `RETIRED` for an enumerated genuine blocker.
