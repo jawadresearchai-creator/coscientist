@@ -1,6 +1,6 @@
 # Management Science CoScientist — Single-Paper Research Handbook
 
-Version 4.3.0
+Version 4.4.0
 
 ## 1. Mission
 
@@ -129,7 +129,91 @@ queues are not imported into the new paper state.
 [GUARANTEE: HISTORICAL_CANDIDATES_ARE_NOT_ACTIVE_INPUT]
 [GUARANTEE: LEGACY_STATE_FIELDS_ARE_NOT_IMPORTED]
 
-## 6. Literature and novelty
+## 6. Persistent Research Director
+
+V4.4 turns the handbook into a practical orchestration state machine. The
+Research Director persists **one next action**, not a portfolio of tasks.
+
+The control plane has only three small Drive-backed JSON records:
+
+```text
+single_paper.json       canonical scientific lifecycle + Topic Charter
+director.json           one pending action + compact phase records
+director_answer.json    one overwriteable reasoning-plane answer inbox
+```
+
+A GitHub-hosted cycle does the following:
+
+1. refresh the current GMS lake catalog;
+2. pull the canonical paper and Director state;
+3. pull the single answer inbox if one exists;
+4. apply it only when its `action_id` exactly matches the current action;
+5. create at most one next action;
+6. persist the canonical paper and Director state back to Drive.
+
+Repeated cycles are idempotent. If no answer has arrived, the same action ID is
+preserved. If an old answer remains in the inbox, it is ignored rather than
+applied to a different scientific stage. Duplicate answer files are refused.
+A newly admitted paper resets Director records rather than inheriting context
+from the prior paper.
+
+[GUARANTEE: DIRECTOR_ONE_ACTION_ONLY]
+[GUARANTEE: DIRECTOR_STALE_ANSWER_IS_SAFE]
+[GUARANTEE: DIRECTOR_NEW_PAPER_RESETS_CONTEXT]
+[GUARANTEE: DIRECTOR_ANSWER_INBOX_IS_UNIQUE]
+
+### Discovery action
+
+When `NO_ACTIVE_PAPER`, the Director requests at most three **fresh current**
+questions from the current lake and current literature, then requires exactly
+one selected Topic Charter. There is no reserve queue.
+
+[GUARANTEE: DIRECTOR_DISCOVERY_IS_BOUNDED]
+[GUARANTEE: DIRECTOR_ADMISSION_LOCKS_DISCOVERY]
+
+### Post-admission actions
+
+Once a topic is admitted, the Director may request only work that strengthens
+that paper:
+
+```text
+SELECTED          -> DEVELOP_LITERATURE_THEORY
+DEVELOPING        -> DATA_FEASIBILITY
+DATA_FEASIBLE     -> DESIGN_CLOSURE
+DESIGN_READY      -> PRE_FREEZE_AUDIT -> CREATE_FREEZE
+FROZEN/ANALYZING  -> RUN_ANALYSIS
+RESULTS_COMPLETE  -> MANUSCRIPT_DRAFT
+MANUSCRIPT        -> FINAL_AUDIT
+```
+
+A repair leaves the same paper active. It never silently starts a new discovery
+round.
+
+[GUARANTEE: DIRECTOR_REPAIRS_SAME_PAPER]
+
+### Reasoning plane versus deterministic core
+
+The Director does not pretend that literature interpretation, theory judgment,
+or hostile review are deterministic. It writes a structured action for a
+reasoning plane. The reasoning plane may use current web literature and the
+current lake, but its answer is validated mechanically before state advances.
+
+Examples of mechanical validation include:
+
+- shortlist size and single selection;
+- action-ID binding;
+- required answer fields;
+- exact paper binding;
+- lake/source suitability fields;
+- valid dataset SHA-256 identities;
+- power-status requirement;
+- enumerated genuine blockers;
+- all required final-audit checks.
+
+The core therefore orchestrates model judgment without making the model the
+source of truth for lifecycle state.
+
+## 7. Literature and novelty
 
 Use a two-layer literature process.
 
@@ -164,7 +248,7 @@ measurement, context, identification or boundary conditions. Retirement occurs
 only when a direct scoop leaves no meaningful residual contribution without
 changing the core question.
 
-## 7. Theory and mechanism
+## 8. Theory and mechanism
 
 Specify a coherent causal/explanatory chain:
 
@@ -182,7 +266,7 @@ For each paper identify:
 
 Prefer one coherent theoretical account to decorative multi-theory stacking.
 
-## 8. Data architecture — lake first
+## 9. Data architecture — lake first
 
 The Global Management Science data lake owns ingestion. CoScientist owns
 scientific selection.
@@ -200,9 +284,11 @@ For every required construct use this order:
 
 A suitable exact lake holding must be selected before external probing.
 External acquisition fills a defined gap; it does not duplicate data already
-held adequately.
+held adequately. Within suitable lake matches, the Director prefers
+`03_RESEARCH`, then `02_CURATED`, then raw/query-layer objects.
 
 [GUARANTEE: G3_IS_LAKE_FIRST]
+[GUARANTEE: DIRECTOR_LAKE_TIER_PRIORITY]
 
 The older source safeguards remain active:
 
@@ -223,7 +309,7 @@ The older source safeguards remain active:
 Large/query-native data are reduced to the smallest useful paper-specific
 extract before freeze. Never query BigQuery blind.
 
-## 9. Outcome-blind feasibility before freeze
+## 10. Outcome-blind feasibility before freeze
 
 Do not freeze a paper because the idea is attractive. Before freeze, prove that
 the exact planned study can be executed without using confirmatory outcome
@@ -242,13 +328,19 @@ Check:
 - plausible effect scale and MDE/power;
 - legal/ethical constraints.
 
+The Director may mark the route `DATA_FEASIBLE` when each essential construct
+has a suitable lake route or a verified free authoritative external route. A
+query-layer route still has to be materialised into the smallest useful extract
+before design freeze, and the final design closure must name exact SHA-256
+identities.
+
 The power gate sees only pre-period information and blocks rather than
 scientifically failing when its input contract is broken.
 
 [GUARANTEE: POWER_GATE_SEES_ONLY_PRE_PERIOD]
 [GUARANTEE: ENGINE_FAILURE_IS_NOT_SCIENTIFIC_FAILURE]
 
-## 10. Consolidated hostile pre-freeze review
+## 11. Consolidated hostile pre-freeze review
 
 Use one consolidated review rather than a forest of candidate courts.
 
@@ -268,7 +360,7 @@ Allowed decisions:
 - `REPAIR` — remain on the same paper and fix the named weakness;
 - `GENUINE_BLOCKER` — retire only with an enumerated blocker.
 
-## 11. Design freeze
+## 12. Design freeze
 
 After feasibility and hostile review pass, freeze:
 
@@ -286,6 +378,12 @@ After feasibility and hostile review pass, freeze:
 - multiplicity policy;
 - exact dataset SHA-256 identities.
 
+A Director action named `CREATE_FREEZE` is **not** a freeze. The deterministic
+mechanical step must write a real `FreezeManifest`; only after that write-once
+manifest exists may the paper transition to `FROZEN`.
+
+[GUARANTEE: DIRECTOR_FREEZE_IS_MECHANICAL]
+
 The freeze is tamper-evident, write-once and has no replacement escape hatch.
 Frozen scientific containers are immutable.
 
@@ -301,7 +399,7 @@ Frozen scientific containers are immutable.
 [GUARANTEE: FROZEN_SCIENTIFIC_CONTAINERS_ARE_IMMUTABLE]
 [GUARANTEE: CANDIDATE_AND_FREEZE_DESCRIBE_ONE_STUDY]
 
-## 12. Analysis lock
+## 13. Analysis lock
 
 Before confirmatory outcome access, lock:
 
@@ -324,7 +422,7 @@ Any edited/new analysis script or changed environment fails verification.
 [GUARANTEE: ANALYSIS_VERIFY_REQUIRES_DESIGN_FREEZE]
 [GUARANTEE: ANALYSIS_LOCK_IS_VERIFIED_BEFORE_OUTCOME_ACCESS]
 
-## 13. Data fetch and quality audit
+## 14. Data fetch and quality audit
 
 Fetch only frozen objects/extracts. Re-hash every input. Build the analysis table
 with recorded joins and exclusions.
@@ -345,7 +443,7 @@ At minimum produce:
 [GUARANTEE: R_CANNOT_READ_UNFROZEN_DATA]
 [GUARANTEE: STUDY_STATE_BOOTSTRAPS_BEFORE_OUTCOMES]
 
-## 14. Analysis
+## 15. Analysis
 
 Run primary confirmatory models first. Report effect sizes and uncertainty, not
 a binary significant/non-significant narrative. Run predeclared robustness and
@@ -370,7 +468,7 @@ agree across records, and incoherent/non-finite statistics are refused.
 [GUARANTEE: ONE_DEFINITION_OF_WHAT_RUNS]
 [GUARANTEE: ANALYSIS_STAGES_RUN_IN_ORDER]
 
-## 15. Results bridge and figures
+## 16. Results bridge and figures
 
 Every reportable result exists exactly once as a tokened result record. Figures
 must declare the result tokens they depict. Manifest tampering is detected.
@@ -380,7 +478,7 @@ must declare the result tokens they depict. Manifest tampering is detected.
 [GUARANTEE: MANIFEST_TAMPERING_IS_DETECTED]
 [GUARANTEE: MANIFEST_REQUIRES_ITS_INTEGRITY_HASHES]
 
-## 16. Manuscript
+## 17. Manuscript
 
 Write from verified evidence and the results bridge. A typical archival
 Management Science structure is:
@@ -412,7 +510,7 @@ checked.
 [GUARANTEE: STRICT_MODE_HAS_NO_ESCAPE_HATCH]
 [GUARANTEE: STRICT_MODE_FORBIDS_THE_ALLOW_LIST]
 
-## 17. Final audit
+## 18. Final audit
 
 Before submission perform:
 
@@ -426,6 +524,11 @@ Before submission perform:
 - current target-journal compliance audit;
 - final novelty refresh.
 
+A Director `PASS` is conjunctive: every mandated final-audit check must pass.
+One failed check produces repair, not submission readiness and not a new topic.
+
+[GUARANTEE: DIRECTOR_FINAL_AUDIT_IS_CONJUNCTIVE]
+
 Only verified outputs reach the authoritative Drive results area. Failed runs
 remain quarantined and no scientific state enters Git.
 
@@ -434,7 +537,7 @@ remain quarantined and no scientific state enters Git.
 [GUARANTEE: DRIVE_PUBLISH_REQUIRES_COMPLETION_MARKER]
 [GUARANTEE: RESEARCH_STATE_NEVER_ENTERS_GIT]
 
-## 18. Minimal human-readable artifact set
+## 19. Minimal human-readable artifact set
 
 A paper should normally expose only:
 
@@ -446,10 +549,11 @@ A paper should normally expose only:
 6. Canonical Manuscript
 7. Final Audit + Replication Package
 
-Machine manifests may be more numerous internally; humans should not have to
-navigate a forest of candidate/court documents.
+Machine manifests may include `single_paper.json`, `director.json`, and other
+integrity/control records internally; humans should not have to navigate a
+forest of candidate/court documents.
 
-## 19. Engineering integrity
+## 20. Engineering integrity
 
 All production modules must import, the engine has one version source, workflow
 YAML/shell must parse, and study budgets must not reset at cycle boundaries.
@@ -460,12 +564,13 @@ YAML/shell must parse, and study budgets must not reset at cycle boundaries.
 [GUARANTEE: BUDGET_PERIODS_ARE_DISTINCT]
 [GUARANTEE: BUDGET_SCOPE_IS_ENFORCED_AT_THE_CALLER]
 
-## 20. One-sentence operating contract
+## 21. One-sentence operating contract
 
 The Management Science CoScientist selects one strong research question, stays
 focused on it, uses the data lake and authoritative public sources to obtain the
-minimum sufficient reproducible evidence, evolves the study rather than
-continually replacing it, freezes only after outcome-blind feasibility is
-proven, executes pre-specified reproducible analysis, produces a
-provenance-backed manuscript, and begins no new paper until the current one is
-submission-ready or genuinely impossible to complete.
+minimum sufficient reproducible evidence, persists one next action across
+runner boundaries, evolves the study rather than continually replacing it,
+freezes only after outcome-blind feasibility is proven, executes pre-specified
+reproducible analysis, produces a provenance-backed manuscript, and begins no
+new paper until the current one is submission-ready or genuinely impossible to
+complete.

@@ -1,8 +1,9 @@
 # Single-paper deterministic heartbeat.
 #
-# This workflow never runs a competing-candidate tournament. It refreshes the
-# lake view, loads one canonical active-paper state from Drive, reports the next
-# action, and preserves the existing pre-freeze judgment boundary.
+# The cycle owns no scientific judgment and never runs a candidate tournament.
+# It refreshes the lake view, reconciles the one canonical paper plus Director
+# state from Drive, applies at most one matching reasoning-plane answer, and
+# persists exactly one next research action.
 
 name: cycle
 
@@ -10,6 +11,15 @@ on:
   schedule:
     - cron: "0 */6 * * *"
   workflow_dispatch:
+  # Bootstrap a newly released Director immediately. Heartbeat-only pushes do
+  # not match these paths, so the bot cannot recursively trigger itself.
+  push:
+    branches: [main]
+    paths:
+      - "src/coscientist/director.py"
+      - "src/coscientist/director_drive.py"
+      - ".github/workflows/cycle.yml"
+      - "policy.yaml"
 
 permissions:
   contents: write
@@ -48,6 +58,7 @@ jobs:
           coscientist lake-doctor --catalog state/gms_lake_catalog.json
 
       - name: Pull canonical single-paper state
+        id: paper_pull
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -58,32 +69,61 @@ jobs:
             --state state/single_paper.json \
             --folder "$GDRIVE_STATE_FOLDER_ID"
 
-      - name: Focused paper status
+      - name: Pull canonical Research Director state
+        id: director_pull
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
         run: |
-          python -m coscientist.single_paper --state state/single_paper.json status
+          python -m coscientist.director_drive pull \
+            --state state/director.json \
+            --folder "$GDRIVE_STATE_FOLDER_ID"
+
+      - name: Pull reasoning-plane answer inbox
+        id: answer_pull
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
+        run: |
+          python -m coscientist.director_drive pull-answer \
+            --answer state/director_answer.json \
+            --folder "$GDRIVE_STATE_FOLDER_ID"
+
+      - name: Apply matching Director answer if present
+        id: director_apply
+        run: |
+          python -m coscientist.director \
+            --state state/single_paper.json \
+            --director state/director.json \
+            --catalog state/gms_lake_catalog.json \
+            apply-if-present --answer state/director_answer.json
+
+      - name: Run the deterministic stages (Research Director)
+        id: director_ensure
+        run: |
+          python -m coscientist.director \
+            --state state/single_paper.json \
+            --director state/director.json \
+            --catalog state/gms_lake_catalog.json \
+            ensure --action-out state/director_action.json
           echo
-          python -m coscientist.single_paper --state state/single_paper.json next-action
+          python -m coscientist.director \
+            --state state/single_paper.json \
+            --director state/director.json \
+            --catalog state/gms_lake_catalog.json \
+            status
 
-      - name: Judgment queue digest
-        run: coscientist tickets
-
-      - name: Check for blocking pre-freeze audit tickets
-        id: blockcheck
-        run: |
-          if coscientist tickets | grep -q "^BLOCKING"; then
-            echo "blocked=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::The active paper is waiting on its pre-freeze audit."
-          else
-            echo "blocked=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run the deterministic stages (single-paper focus)
-        if: steps.blockcheck.outputs.blocked != 'true'
-        run: |
-          python -m coscientist.single_paper --state state/single_paper.json next-action
-          echo "No competing topic generation is run while a viable paper is active."
-
-      - name: Persist canonical single-paper state to Drive
+      - name: Persist canonical paper and Director state to Drive
+        if: >-
+          steps.paper_pull.outcome == 'success' &&
+          steps.director_pull.outcome == 'success' &&
+          steps.answer_pull.outcome == 'success' &&
+          steps.director_apply.outcome == 'success' &&
+          steps.director_ensure.outcome == 'success'
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -93,9 +133,12 @@ jobs:
           python -m coscientist.single_paper_drive push \
             --state state/single_paper.json \
             --folder "$GDRIVE_STATE_FOLDER_ID"
+          python -m coscientist.director_drive push \
+            --state state/director.json \
+            --folder "$GDRIVE_STATE_FOLDER_ID"
 
       # Research state, designs, data, results and manuscripts remain Drive-only.
-      # Git receives only the operational heartbeat/budget accounting.
+      # Git receives only operational heartbeat/budget accounting.
       - name: Persist operational heartbeat
         run: |
           git config user.name  "coscientist-bot"

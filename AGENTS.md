@@ -1,4 +1,4 @@
-# CoScientist V4.3 — agent contract
+# CoScientist V4.4 — agent contract
 
 Read this before changing or operating the Management Science CoScientist. This
 is the active constitution for Codex, Claude, ChatGPT and any other reasoning or
@@ -28,6 +28,27 @@ Broad discovery is allowed only when no paper is active, the current paper is
 `SUBMISSION_READY`, or the paper is `RETIRED` for an enumerated genuine blocker.
 Do not create reserve candidates, parallel papers, portfolios, leaderboards, or
 replacement topics while the active paper remains viable.
+
+## Research Director rule
+
+`director.json` is the canonical orchestration record. It may contain **one
+pending research action**. `director_answer.json` is the single overwriteable
+reasoning-plane inbox. Never create an alternate Director state, second answer
+inbox, parallel work queue, or paper-specific candidate queue.
+
+When operating as the reasoning plane:
+
+1. read the current `single_paper.json` and `director.json`;
+2. answer only the pending `action_id`;
+3. use current web/literature evidence and the current GMS lake as required by
+   that action;
+4. write one structured `director_answer.json`;
+5. do not mutate lifecycle stage by hand;
+6. do not answer a stale action after the Director has moved on.
+
+The deterministic Director validates the answer before state advances. A stale
+answer is ignored. Repeated cycles preserve the same pending action rather than
+generating more work.
 
 ## Genuine blockers
 
@@ -88,10 +109,14 @@ Accessibility and redistribution rights remain separate properties.
 Before freeze establish outcome-blind source access/licence, schema, joins,
 granularity, coverage, sample construction, treatment/support variation,
 essential-variable availability, realistic missingness/attrition, pre-period
-noise/dependence, and plausible power/MDE for the intended design.
+noise/dependence, plausible power/MDE, and exact dataset SHA-256 identities.
 
 Then perform one consolidated hostile pre-freeze review with `PASS`, `REPAIR`,
 or `GENUINE_BLOCKER`. Do not recreate a forest of separate candidate courts.
+
+A `CREATE_FREEZE` Director action is not permission to set a status flag. Run
+the mechanical freeze creator and require a real `FreezeManifest`; only then
+may the lifecycle become `FROZEN`.
 
 ## Outcome and analysis locks
 
@@ -103,31 +128,35 @@ remain one-way doors.
 
 ## Quota boundary
 
-Nothing in `src/coscientist/` calls an LLM. Judgment can leave the deterministic
-core as a ticket. Engineering, literature interpretation, manuscript prose and
-hostile review may be performed by reasoning models, but fixes return through
-reproducible code/state rather than patching results directly.
+Nothing in `src/coscientist/` calls an LLM. Judgment leaves the deterministic
+core as a persistent Director action or a compatibility ticket. Engineering,
+literature interpretation, manuscript prose and hostile review may be performed
+by reasoning models, but fixes return through reproducible code/state rather
+than patching results directly.
 
 ## Manuscript integrity
 
 The results bridge is authoritative for empirical numbers. Confirmatory prose
 uses strict result-token provenance and figures are bound to result tokens. The
-manuscript-stage audit must also verify references and claim support.
+manuscript-stage audit must also verify references and claim support. Final
+submission readiness requires every mandated final-audit check to pass.
 
 ## GitHub / Drive boundary
 
 GitHub contains code, tests, workflows and registries. Google Drive contains
-scientific state, frozen data identities, research outputs and manuscripts.
-Workflows must never commit unsubmitted scientific state/results to Git.
+scientific state, Director state, frozen data identities, research outputs and
+manuscripts. Workflows must never commit unsubmitted scientific state/results
+to Git.
 
 ## Engineering rule
 
-Every deterministic guarantee claimed by the system belongs in
-`GUARANTEES.yaml` and names a real test. Documentation and tests move together.
-Green tests establish encoded contracts; they never replace scientific review.
+Every deterministic guarantee claimed by the system belongs in one of the
+`GUARANTEES*.yaml` registry files and names a real test. Documentation and tests
+move together. Green tests establish encoded contracts; they never replace
+scientific review.
 
 ## Canonical handbook
 
 `docs/SINGLE_PAPER_RESEARCH_HANDBOOK.md` is the human-readable operating
 handbook. If an older Management Sciences candidate/court/handoff document
-conflicts with this contract, V4.3 wins for all active work.
+conflicts with this contract, V4.4 wins for all active work.
