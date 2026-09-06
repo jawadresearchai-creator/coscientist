@@ -1,10 +1,9 @@
-# Single-paper deterministic heartbeat.
+# Single-paper deterministic heartbeat — v4.6 integrity/autonomy closure.
 #
-# The cycle owns no scientific judgment and never runs a candidate tournament.
-# It refreshes the lake view, reconciles the one canonical paper plus Director
-# state from Drive, applies at most one matching reasoning-plane answer, and
-# persists exactly one next research action. V4.5 additionally attaches and
-# enforces role/skill execution profiles around reasoning actions.
+# The cycle owns no scientific judgment. It applies at most one matching
+# reasoning answer, then repeatedly executes only mechanical Director actions
+# until the next step requires reasoning or an already-dispatched analysis run.
+# Immutable lifecycle artifacts live in one per-paper Drive folder.
 
 name: cycle
 
@@ -12,21 +11,25 @@ on:
   schedule:
     - cron: "0 */6 * * *"
   workflow_dispatch:
-  # Bootstrap a newly released Director immediately. Heartbeat-only pushes do
-  # not match these paths, so the bot cannot recursively trigger itself.
   push:
     branches: [main]
     paths:
       - "src/coscientist/director.py"
       - "src/coscientist/director_v45.py"
-      - "src/coscientist/director_drive.py"
+      - "src/coscientist/director_v46.py"
+      - "src/coscientist/integrity.py"
+      - "src/coscientist/study_state_drive.py"
       - "agents/**"
       - "skills/**"
       - ".github/workflows/cycle.yml"
+      - ".github/workflows/analysis.yml"
       - "policy.yaml"
 
+# The research heartbeat no longer writes to the public repository.  It needs
+# actions:write only to dispatch the already-defined confirmatory workflow.
 permissions:
-  contents: write
+  contents: read
+  actions: write
 
 concurrency:
   group: coscientist-single-paper-cycle
@@ -97,37 +100,152 @@ jobs:
             --answer state/director_answer.json \
             --folder "$GDRIVE_STATE_FOLDER_ID"
 
+      - name: Pull canonical integrity receipts when present
+        id: receipt_pull
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p state/receipts
+          PID=$(python - <<'PY'
+          import json
+          p=json.load(open('state/single_paper.json'))
+          print((p.get('active_paper') or {}).get('paper_id',''))
+          PY
+          )
+          if [ -z "$PID" ]; then
+            echo "no active paper; no integrity receipts to pull"
+            exit 0
+          fi
+          for name in dataset_receipt.json power_receipt.json final_audit_evidence.json; do
+            python -m coscientist.study_state_drive pull-optional \
+              --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
+              --name "$name" --path "state/receipts/$name"
+          done
+
       - name: Apply matching Director answer if present
         id: director_apply
         run: |
-          python -m coscientist.director_v45 \
+          python -m coscientist.director_v46 \
             --state state/single_paper.json \
             --director state/director.json \
             --catalog state/gms_lake_catalog.json \
+            --receipt-dir state/receipts \
             apply-if-present --answer state/director_answer.json
 
-      - name: Run the deterministic stages (Research Director)
-        id: director_ensure
+      - name: Execute all currently available deterministic Director steps
+        id: director_mechanical
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python -m coscientist.director_v45 \
-            --state state/single_paper.json \
-            --director state/director.json \
-            --catalog state/gms_lake_catalog.json \
-            ensure --action-out state/director_action.json
+          set -euo pipefail
+          mkdir -p state
+
+          # At most four passes are needed to close CREATE_FREEZE -> lock ->
+          # dispatch, or ANALYZING -> receipt completion -> next reasoning step.
+          for pass in 1 2 3 4; do
+            python -m coscientist.director_v46 \
+              --state state/single_paper.json \
+              --director state/director.json \
+              --catalog state/gms_lake_catalog.json \
+              ensure --action-out state/director_action.json
+
+            read -r KIND STAGE PID <<EOF
+          $(python - <<'PY'
+          import json
+          a=json.load(open('state/director_action.json'))
+          p=json.load(open('state/single_paper.json'))
+          print(a.get('kind','-'), p.get('stage') or '-', (p.get('active_paper') or {}).get('paper_id','-'))
+          PY
+          )
+          EOF
+
+            echo "pass=$pass paper=$PID stage=$STAGE action=$KIND"
+
+            if [ "$KIND" = "CREATE_FREEZE" ]; then
+              python -m coscientist.director_v46 \
+                --state state/single_paper.json --director state/director.json \
+                --catalog state/gms_lake_catalog.json \
+                create-freeze --out state/freeze.json
+              python -m coscientist.study_state_drive push \
+                --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
+                --name freeze.json --path state/freeze.json
+              continue
+            fi
+
+            if [ "$KIND" = "RUN_ANALYSIS" ] && [ "$STAGE" = "FROZEN" ]; then
+              python -m coscientist.study_state_drive pull \
+                --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
+                --name freeze.json --path state/freeze.json
+              python -m coscientist.director_v46 \
+                --state state/single_paper.json --director state/director.json \
+                --catalog state/gms_lake_catalog.json \
+                create-analysis-lock --freeze state/freeze.json \
+                --out state/analysis_lock.json --root .
+              python -m coscientist.study_state_drive push \
+                --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
+                --name analysis_lock.json --path state/analysis_lock.json
+
+              # Dispatch succeeds or the paper stays FROZEN.  The analysis job
+              # checks out this exact commit SHA before verifying the lock.
+              gh workflow run analysis.yml --ref main \
+                -f study="$PID" -f strict_provenance=true -f git_sha="$GITHUB_SHA"
+              DISPATCH_ID="cycle-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+              python -m coscientist.director_v46 \
+                --state state/single_paper.json --director state/director.json \
+                --catalog state/gms_lake_catalog.json \
+                mark-analysis-dispatched --freeze state/freeze.json \
+                --analysis-lock state/analysis_lock.json --dispatch-id "$DISPATCH_ID"
+              continue
+            fi
+
+            if [ "$KIND" = "RUN_ANALYSIS" ] && [ "$STAGE" = "ANALYZING" ]; then
+              python -m coscientist.study_state_drive pull \
+                --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
+                --name freeze.json --path state/freeze.json
+              python -m coscientist.study_state_drive pull \
+                --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
+                --name analysis_lock.json --path state/analysis_lock.json
+              FOUND=$(python -m coscientist.study_state_drive pull-optional \
+                --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
+                --name analysis_receipt.json --path state/analysis_receipt.json | tail -1)
+              if [ "$FOUND" = "FOUND" ]; then
+                python -m coscientist.director_v46 \
+                  --state state/single_paper.json --director state/director.json \
+                  --catalog state/gms_lake_catalog.json \
+                  complete-from-receipt --receipt state/analysis_receipt.json \
+                  --freeze state/freeze.json --analysis-lock state/analysis_lock.json
+                continue
+              fi
+              echo "analysis already dispatched; waiting for canonical analysis_receipt.json"
+              break
+            fi
+
+            # Reasoning action or terminal state: deterministic work is complete.
+            break
+          done
+
           echo
-          python -m coscientist.director_v45 \
+          python -m coscientist.director_v46 \
             --state state/single_paper.json \
             --director state/director.json \
-            --catalog state/gms_lake_catalog.json \
-            status
+            --catalog state/gms_lake_catalog.json status
 
       - name: Persist canonical paper and Director state to Drive
         if: >-
           steps.paper_pull.outcome == 'success' &&
           steps.director_pull.outcome == 'success' &&
           steps.answer_pull.outcome == 'success' &&
+          steps.receipt_pull.outcome == 'success' &&
           steps.director_apply.outcome == 'success' &&
-          steps.director_ensure.outcome == 'success'
+          steps.director_mechanical.outcome == 'success'
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -135,18 +253,12 @@ jobs:
           GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
         run: |
           python -m coscientist.single_paper_drive push \
-            --state state/single_paper.json \
-            --folder "$GDRIVE_STATE_FOLDER_ID"
+            --state state/single_paper.json --folder "$GDRIVE_STATE_FOLDER_ID"
           python -m coscientist.director_drive push \
-            --state state/director.json \
-            --folder "$GDRIVE_STATE_FOLDER_ID"
+            --state state/director.json --folder "$GDRIVE_STATE_FOLDER_ID"
 
-      # Research state, designs, data, results and manuscripts remain Drive-only.
-      # Git receives only operational heartbeat/budget accounting.
-      - name: Persist operational heartbeat
+      - name: Operational summary
+        if: always()
         run: |
-          git config user.name  "coscientist-bot"
-          git config user.email "${{ secrets.CONTACT_EMAIL }}"
-          git add -f state/budget.json state/heartbeat.json 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "cycle: heartbeat $(date -u +%FT%TZ)"
-          git push || echo "nothing to push"
+          echo "cycle=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test -f state/single_paper.json && cat state/single_paper.json | python -m json.tool | head -80 || true
