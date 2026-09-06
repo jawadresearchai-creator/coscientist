@@ -1,9 +1,11 @@
-# Single-paper deterministic heartbeat — v4.6 integrity/autonomy closure.
+# Single-paper deterministic heartbeat — v4.6.1 owner-withdrawal governance.
 #
 # The cycle owns no scientific judgment. It applies at most one matching
 # reasoning answer, then repeatedly executes only mechanical Director actions
 # until the next step requires reasoning or an already-dispatched analysis run.
 # Immutable lifecycle artifacts live in one per-paper Drive folder.
+# An explicit owner withdrawal releases the one-paper lock without classifying
+# the old paper as a scientific failure.
 
 name: cycle
 
@@ -17,6 +19,8 @@ on:
       - "src/coscientist/director.py"
       - "src/coscientist/director_v45.py"
       - "src/coscientist/director_v46.py"
+      - "src/coscientist/director_v461.py"
+      - "src/coscientist/single_paper.py"
       - "src/coscientist/integrity.py"
       - "src/coscientist/study_state_drive.py"
       - "agents/**"
@@ -25,8 +29,6 @@ on:
       - ".github/workflows/analysis.yml"
       - "policy.yaml"
 
-# The research heartbeat no longer writes to the public repository. It needs
-# actions:write only to dispatch the already-defined confirmatory workflow.
 permissions:
   contents: read
   actions: write
@@ -129,14 +131,14 @@ jobs:
       - name: Apply matching Director answer if present
         id: director_apply
         run: |
-          python -m coscientist.director_v46 \
+          python -m coscientist.director_v461 \
             --state state/single_paper.json \
             --director state/director.json \
             --catalog state/gms_lake_catalog.json \
             --receipt-dir state/receipts \
             apply-if-present --answer state/director_answer.json
 
-      - name: Run the deterministic stages (Research Director v4.6)
+      - name: Run the deterministic stages (Research Director v4.6.1)
         id: director_mechanical
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
@@ -148,10 +150,8 @@ jobs:
           set -euo pipefail
           mkdir -p state
 
-          # At most four passes are needed to close CREATE_FREEZE -> lock ->
-          # dispatch, or ANALYZING -> receipt completion -> next reasoning step.
           for pass in 1 2 3 4; do
-            python -m coscientist.director_v46 \
+            python -m coscientist.director_v461 \
               --state state/single_paper.json \
               --director state/director.json \
               --catalog state/gms_lake_catalog.json \
@@ -170,7 +170,7 @@ jobs:
             echo "pass=$pass paper=$PID stage=$STAGE action=$KIND"
 
             if [ "$KIND" = "CREATE_FREEZE" ]; then
-              python -m coscientist.director_v46 \
+              python -m coscientist.director_v461 \
                 --state state/single_paper.json --director state/director.json \
                 --catalog state/gms_lake_catalog.json \
                 create-freeze --out state/freeze.json
@@ -184,7 +184,7 @@ jobs:
               python -m coscientist.study_state_drive pull \
                 --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
                 --name freeze.json --path state/freeze.json
-              python -m coscientist.director_v46 \
+              python -m coscientist.director_v461 \
                 --state state/single_paper.json --director state/director.json \
                 --catalog state/gms_lake_catalog.json \
                 create-analysis-lock --freeze state/freeze.json \
@@ -193,12 +193,10 @@ jobs:
                 --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
                 --name analysis_lock.json --path state/analysis_lock.json
 
-              # Dispatch succeeds or the paper stays FROZEN. The analysis job
-              # checks out this exact commit SHA before verifying the lock.
               gh workflow run analysis.yml --ref main \
                 -f study="$PID" -f strict_provenance=true -f git_sha="$GITHUB_SHA"
               DISPATCH_ID="cycle-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
-              python -m coscientist.director_v46 \
+              python -m coscientist.director_v461 \
                 --state state/single_paper.json --director state/director.json \
                 --catalog state/gms_lake_catalog.json \
                 mark-analysis-dispatched --freeze state/freeze.json \
@@ -217,7 +215,7 @@ jobs:
                 --study "$PID" --root-folder "$GDRIVE_STATE_FOLDER_ID" \
                 --name analysis_receipt.json --path state/analysis_receipt.json | tail -1)
               if [ "$FOUND" = "FOUND" ]; then
-                python -m coscientist.director_v46 \
+                python -m coscientist.director_v461 \
                   --state state/single_paper.json --director state/director.json \
                   --catalog state/gms_lake_catalog.json \
                   complete-from-receipt --receipt state/analysis_receipt.json \
@@ -228,12 +226,11 @@ jobs:
               break
             fi
 
-            # Reasoning action or terminal state: deterministic work is complete.
             break
           done
 
           echo
-          python -m coscientist.director_v46 \
+          python -m coscientist.director_v461 \
             --state state/single_paper.json \
             --director state/director.json \
             --catalog state/gms_lake_catalog.json status
