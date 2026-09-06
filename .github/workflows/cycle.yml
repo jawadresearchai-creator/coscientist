@@ -1,8 +1,8 @@
-# The deterministic cycle.
+# Single-paper deterministic heartbeat.
 #
-# No LLM is invoked anywhere in this workflow. It runs the gauntlet, reports
-# the judgment queue, and stops only if a BLOCKING ticket is open -- which by
-# design means exactly one thing: a pre-freeze audit that has not happened.
+# This workflow never runs a competing-candidate tournament. It refreshes the
+# lake view, loads one canonical active-paper state from Drive, reports the next
+# action, and preserves the existing pre-freeze judgment boundary.
 
 name: cycle
 
@@ -10,21 +10,12 @@ on:
   schedule:
     - cron: "0 */6 * * *"
   workflow_dispatch:
-    inputs:
-      cycle:
-        description: Cycle identifier
-        required: false
-        default: cycle-001
 
 permissions:
   contents: write
 
-# Scheduled and manual runs can otherwise overlap and race each other over
-# engine.json, the ticket directory and the ledger. Atomic writes stop a file
-# being half-written; they do not stop two runs interleaving decisions.
-# Queue rather than cancel: a half-finished cycle should complete, not be shot.
 concurrency:
-  group: coscientist-cycle
+  group: coscientist-single-paper-cycle
   cancel-in-progress: false
 
 jobs:
@@ -56,37 +47,56 @@ jobs:
           coscientist lake-sync --out state/gms_lake_catalog.json
           coscientist lake-doctor --catalog state/gms_lake_catalog.json
 
-      - name: Engine status
-        run: coscientist status
+      - name: Pull canonical single-paper state
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
+        run: |
+          python -m coscientist.single_paper_drive pull \
+            --state state/single_paper.json \
+            --folder "$GDRIVE_STATE_FOLDER_ID"
+
+      - name: Focused paper status
+        run: |
+          python -m coscientist.single_paper --state state/single_paper.json status
+          echo
+          python -m coscientist.single_paper --state state/single_paper.json next-action
 
       - name: Judgment queue digest
         run: coscientist tickets
 
-      # `exit 0` ends the STEP successfully and the job carries straight on --
-      # which was harmless only because nothing followed. Emit an output and
-      # gate the later steps on it instead.
-      - name: Check for blocking tickets
+      - name: Check for blocking pre-freeze audit tickets
         id: blockcheck
         run: |
           if coscientist tickets | grep -q "^BLOCKING"; then
             echo "blocked=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Blocked on a pre-freeze audit. This is intentional:"
-            echo "::warning::freezing an unaudited design cannot be repaired later."
+            echo "::warning::The active paper is waiting on its pre-freeze audit."
           else
             echo "blocked=false" >> "$GITHUB_OUTPUT"
-            echo "No blocking tickets. Core is runnable."
           fi
 
-      - name: Run the deterministic stages
+      - name: Enforce focused next action
         if: steps.blockcheck.outputs.blocked != 'true'
         run: |
-          echo "Orchestrator entry point. Gated on the blocking check above."
-          coscientist status
+          python -m coscientist.single_paper --state state/single_paper.json next-action
+          echo "No competing topic generation is run while a viable paper is active."
 
-      # Research state -- candidates, freezes, manuscripts -- belongs in Drive,
-      # never in git. Only the operational heartbeat is committed here: budget
-      # accounting and the run pointer. Committing scientific state to a repo
-      # that may become public is how an unsubmitted design leaks.
+      - name: Persist canonical single-paper state to Drive
+        if: always()
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          GDRIVE_STATE_FOLDER_ID: ${{ secrets.GDRIVE_STATE_FOLDER_ID }}
+        run: |
+          python -m coscientist.single_paper_drive push \
+            --state state/single_paper.json \
+            --folder "$GDRIVE_STATE_FOLDER_ID"
+
+      # Research state, designs, data, results and manuscripts remain Drive-only.
+      # Git receives only the operational heartbeat/budget accounting.
       - name: Persist operational heartbeat
         run: |
           git config user.name  "coscientist-bot"
