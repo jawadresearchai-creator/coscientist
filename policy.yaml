@@ -1,12 +1,16 @@
 # Standing judgment policy for the single-paper Management Science CoScientist.
-# Scientific focus is not a quota decision: candidate churn is disabled by
-# policy and by the single-paper state machine.
+#
+# V4.4 authority boundary:
+# - director.json is the persistent scientific orchestration state;
+# - this ticket policy remains a compatibility/engineering quota adapter;
+# - scientific focus is never decided by quota policy;
+# - candidate churn and historical-candidate revival stay disabled everywhere.
 
 default: ask
 
 tickets:
   build_repair:             auto
-  topic_discovery:          ask    # allowed only when single_paper.discovery_allowed is true
+  topic_discovery:          ask    # only when single_paper.discovery_allowed is true
   novelty_closure:          ask    # bounded: admission/pre-freeze/pre-submission
   pre_freeze_audit:         ask    # BLOCKING; no safe automatic default
   manuscript_prose:         ask
