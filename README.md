@@ -127,13 +127,14 @@ separation and guarded query costs.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q            # 296 tests expected after the v4.3 migration
+pytest -q            # 315 tests expected after the v4.3 migration
 ```
 
 The suite includes package-import integrity checks, so every new production
 module must import successfully. `GUARANTEES.yaml` remains the executable
-contract registry; `docs/GUARANTEE_INDEX.md` maps its guarantees back into the
-documentation.
+contract registry, extended by versioned `GUARANTEES*.yaml` files; the
+integrity suite loads them as one registry and `docs/GUARANTEE_INDEX.md` maps
+those guarantees back into the documentation.
 
 ## Scope
 
