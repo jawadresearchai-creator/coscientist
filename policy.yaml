@@ -1,22 +1,27 @@
 # Standing judgment policy for the single-paper Management Science CoScientist.
 #
-# V4.4 authority boundary:
+# V4.6.1 authority boundary:
 # - director.json is the persistent scientific orchestration state;
-# - this ticket policy remains a compatibility/engineering quota adapter;
-# - scientific focus is never decided by quota policy;
+# - exactly one paper may be ACTIVE at a time;
+# - the one-paper rule prevents parallel papers, not owner choice;
+# - RETIRED is reserved for genuine scientific blockers;
+# - an explicit owner instruction may place a non-terminal paper in USER_WITHDRAWN;
+# - USER_WITHDRAWN immediately reopens discovery and may carry one owner_next_topic_direction;
+# - owner withdrawal is deterministic control, never an inferred LLM judgment;
 # - candidate churn and historical-candidate revival stay disabled everywhere.
 
 default: ask
 
 tickets:
   build_repair:             auto
-  topic_discovery:          ask    # only when single_paper.discovery_allowed is true
+  topic_discovery:          ask    # when discovery_allowed, including USER_WITHDRAWN
+  owner_withdrawal:         auto   # only after an explicit owner instruction; never inferred
   novelty_closure:          ask    # bounded: admission/pre-freeze/pre-submission
   pre_freeze_audit:         ask    # BLOCKING; no safe automatic default
   manuscript_prose:         ask
   reviewer_audit:           ask
   citation_claim_audit:     ask
 
-  # Legacy candidate-tournament actions are explicitly disabled.
+  # Legacy candidate-tournament actions remain disabled.
   candidate_generation:     never
   historical_candidate_revival: never
