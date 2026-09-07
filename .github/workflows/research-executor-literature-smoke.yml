@@ -52,13 +52,18 @@ jobs:
           research_executor.tests.test_literature
           -v
 
-      - name: Live-smoke zero-cost scholarly sources
+      - name: Live-smoke zero-cost scholarly sources and cross-source deduplication
         env:
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
         run: |
           python - <<'PY'
           import os
-          from research_executor.literature import search_crossref, search_europe_pmc, search_openalex
+          from research_executor.literature import (
+              deduplicate_records,
+              search_crossref,
+              search_europe_pmc,
+              search_openalex,
+          )
 
           probe = "plant extracellular ATP signaling"
           cr = search_crossref(probe, 2)
@@ -67,6 +72,17 @@ jobs:
               raise SystemExit("required keyless scholarly source returned no smoke records")
           print(f"CROSSREF_ROUTE=PASS count={len(cr)}")
           print(f"EUROPE_PMC_ROUTE=PASS count={len(ep)}")
+
+          overlap_doi = "10.1016/j.pbi.2014.04.009"
+          cr_overlap = [r for r in search_crossref(overlap_doi, 5) if r.get("doi") == overlap_doi]
+          ep_overlap = [r for r in search_europe_pmc(overlap_doi, 5) if r.get("doi") == overlap_doi]
+          if not cr_overlap or not ep_overlap:
+              raise SystemExit("live cross-source DOI overlap probe was not resolved by both required sources")
+          works, _ = deduplicate_records([cr_overlap[0], ep_overlap[0]])
+          if len(works) != 1 or len(works[0].get("source_records") or []) < 2:
+              raise SystemExit("live Crossref + Europe PMC duplicate did not collapse to one provenance-linked work")
+          print(f"LIVE_CROSS_SOURCE_DEDUP=PASS doi={overlap_doi} source_records={len(works[0]['source_records'])}")
+
           oa, status = search_openalex(probe, 2, api_key=os.getenv("OPENALEX_API_KEY") or None)
           if status == "PASS" and not oa:
               raise SystemExit("OpenAlex free-key route reported PASS but returned no records")
