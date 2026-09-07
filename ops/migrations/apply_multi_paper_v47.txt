@@ -1,0 +1,8 @@
+CoScientist V4.7 multi-paper Drive migration authorization marker.
+
+Owner instruction: allow multiple Management Science papers to remain active concurrently.
+Migration mode: non-destructive.
+Legacy root state: preserve.
+Existing per-paper scientific snapshots: preserve.
+Astra: reactivate as REPAIR for DATA_COMPLETENESS_V3_REPAIR.
+MS-AI-PROC-COMP-2025: preserve as independently active.

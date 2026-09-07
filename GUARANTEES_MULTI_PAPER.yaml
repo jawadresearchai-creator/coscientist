@@ -1,0 +1,22 @@
+# V4.7.0 multi-paper guarantees.
+
+guarantees:
+  - id: MULTIPLE_ACTIVE_PAPERS_ALLOWED
+    claim: The root registry permits more than one active paper at the same time.
+    test: test_multiple_active_papers_are_allowed
+
+  - id: FOCUS_IS_NOT_EXCLUSIVE
+    claim: Changing focus does not deactivate or withdraw any other paper.
+    test: test_focus_is_not_exclusive
+
+  - id: PAPER_LIFECYCLES_ARE_ISOLATED
+    claim: Advancing one paper's lifecycle does not change another paper's lifecycle.
+    test: test_each_paper_keeps_independent_lifecycle
+
+  - id: MULTI_PAPER_REGISTRY_ROUNDTRIPS
+    claim: The multi-paper registry persists and validates all registered paper identities and paths.
+    test: test_registry_round_trip_and_validate
+
+  - id: PAPER_REGISTRY_STATUS_IS_ISOLATED
+    claim: Changing registry status for one paper leaves all other papers unchanged.
+    test: test_registry_status_does_not_change_other_paper
