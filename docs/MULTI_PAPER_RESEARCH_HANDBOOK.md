@@ -27,11 +27,11 @@ The root registry indexes papers and may nominate a focus paper. Focus is only a
 
 The V4.7 executable guarantee registry makes the multi-paper contract mechanically testable:
 
-- `MULTIPLE_ACTIVE_PAPERS_ALLOWED` — multiple papers can remain active concurrently.
-- `FOCUS_IS_NOT_EXCLUSIVE` — changing focus never deactivates another paper.
-- `PAPER_LIFECYCLES_ARE_ISOLATED` — lifecycle changes for one paper do not mutate another.
-- `MULTI_PAPER_REGISTRY_ROUNDTRIPS` — registry identities and paper-scoped paths persist and validate.
-- `PAPER_REGISTRY_STATUS_IS_ISOLATED` — changing registry status for one paper leaves the rest unchanged.
+- [GUARANTEE: MULTIPLE_ACTIVE_PAPERS_ALLOWED] Multiple papers can remain active concurrently.
+- [GUARANTEE: FOCUS_IS_NOT_EXCLUSIVE] Changing focus never deactivates another paper.
+- [GUARANTEE: PAPER_LIFECYCLES_ARE_ISOLATED] Lifecycle changes for one paper do not mutate another.
+- [GUARANTEE: MULTI_PAPER_REGISTRY_ROUNDTRIPS] Registry identities and paper-scoped paths persist and validate.
+- [GUARANTEE: PAPER_REGISTRY_STATUS_IS_ISOLATED] Changing registry status for one paper leaves the rest unchanged.
 
 Additional operating consequences:
 
@@ -42,7 +42,7 @@ Additional operating consequences:
 - Switching conversational focus does not withdraw another paper.
 - A workflow must receive or resolve an explicit `paper_id` before writing scientific state.
 
-The legacy compatibility guarantees `SINGLE_ACTIVE_PAPER_ONLY`, `DISCOVERY_STOPS_AFTER_ADMISSION`, `TERMINAL_PAPER_REOPENS_DISCOVERY`, and `SINGLE_PAPER_STAGE_IS_MONOTONIC` apply only inside one paper-state file. They do not impose a global one-paper limit in V4.7.
+The legacy compatibility guarantees [GUARANTEE: SINGLE_ACTIVE_PAPER_ONLY], [GUARANTEE: DISCOVERY_STOPS_AFTER_ADMISSION], [GUARANTEE: TERMINAL_PAPER_REOPENS_DISCOVERY], and [GUARANTEE: SINGLE_PAPER_STAGE_IS_MONOTONIC] apply only inside one paper-state file. They do not impose a global one-paper limit in V4.7.
 
 ## Paper-local lifecycle
 
