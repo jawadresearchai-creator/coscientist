@@ -1,0 +1,7 @@
+paper_id=MS-ASTRA-REVALUE-2026
+phase=DESIGN_CLOSURE
+launch=ASTRA_DESIGN_INPUTS_V1
+outcome_access=PROHIBITED
+primary_event_date=2026-09-03
+primary_window=CAR_0_PLUS_1
+pre_event_cutoff=2026-08-06
