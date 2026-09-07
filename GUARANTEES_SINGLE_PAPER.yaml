@@ -1,44 +1,44 @@
-# Executable guarantees added by the v4.3 single-paper operating model.
-# The integrity suite loads GUARANTEES*.yaml as one registry and rejects
-# duplicate IDs or entries that do not name a real test.
+# Backward-compatibility guarantees for the legacy paper-local lifecycle engine.
+# V4.7.0 permits multiple papers globally. `SinglePaperState` remains the
+# one-charter-per-state-file implementation used inside each paper namespace.
 
 guarantees:
-  - id: SINGLE_ACTIVE_PAPER_ONLY
-    claim: The scientific state permits only one active paper at a time.
+  - id: PAPER_STATE_ONE_CHARTER_ONLY
+    claim: One paper-state file contains only one active charter; additional papers use separate paper-state files.
     test: test_cannot_admit_second_active_paper
 
-  - id: DISCOVERY_STOPS_AFTER_ADMISSION
-    claim: Broad topic discovery is locked while a viable paper is active.
+  - id: PAPER_LOCAL_DISCOVERY_LOCK
+    claim: Within one paper-state file, a second charter cannot replace the current charter while that paper is active.
     test: test_discovery_is_locked_while_paper_is_active
 
   - id: RETIREMENT_REQUIRES_GENUINE_BLOCKER
-    claim: Operational problems cannot retire the active paper; retirement requires an enumerated genuine blocker.
+    claim: Operational problems cannot retire a paper; retirement requires an enumerated genuine blocker.
     test: test_operational_problem_cannot_retire_active_paper
 
-  - id: TERMINAL_PAPER_REOPENS_DISCOVERY
-    claim: A new topic may be admitted after the current paper is submission-ready or genuinely retired.
+  - id: TERMINAL_PAPER_STATE_CAN_BE_REUSED_LEGACY
+    claim: The legacy paper-local state engine permits a new charter only after its current charter reaches a terminal stage; multi-paper mode normally creates a new state file instead.
     test: test_submission_ready_reopens_discovery
 
   - id: TOPIC_EVOLUTION_HAS_NO_ARBITRARY_BUDGET
-    claim: Pre-freeze evolution of the active paper is not terminated by an arbitrary rescope-count budget.
+    claim: Pre-freeze evolution of a paper is not terminated by an arbitrary rescope-count budget.
     test: test_pre_freeze_evolution_is_not_arbitrarily_bounded
 
   - id: HISTORICAL_CANDIDATES_ARE_NOT_ACTIVE_INPUT
-    claim: Historical retired-candidate and recycle memory does not reject or seed the active paper.
+    claim: Historical retired-candidate and recycle memory does not reject or seed a paper.
     test: test_legacy_candidate_memory_is_ignored
 
   - id: LEGACY_STATE_FIELDS_ARE_NOT_IMPORTED
-    claim: Legacy slate, portfolio, and retired-lineage fields are ignored when the single-paper state is loaded.
+    claim: Legacy slate, portfolio, and retired-lineage fields are ignored when a paper-local state is loaded.
     test: test_legacy_fields_are_ignored_when_loading
 
   - id: G3_IS_LAKE_FIRST
     claim: A suitable exact lake holding is selected before any external source is probed.
     test: test_g3_uses_lake_before_external_source
 
-  - id: SINGLE_PAPER_STAGE_IS_MONOTONIC
-    claim: The active paper cannot skip lifecycle stages or move backwards through them.
+  - id: PAPER_STAGE_IS_MONOTONIC
+    claim: Each paper independently cannot skip lifecycle stages or move backwards through them.
     test: test_stage_cannot_skip_or_move_backwards
 
   - id: PRE_FREEZE_EVOLUTION_STOPS_AT_FREEZE
-    claim: Topic evolution is permitted repeatedly before freeze and refused after the outcome lock.
+    claim: Topic evolution is permitted repeatedly before that paper's freeze and refused after its outcome lock.
     test: test_evolution_is_pre_freeze_and_not_capped
