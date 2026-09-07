@@ -35,9 +35,12 @@ def fetch_sec_master_identity(date: str) -> str:
         raw = resp.read()
         content_type = str(resp.headers.get("Content-Type", ""))
     text = raw.decode("latin-1", errors="replace")
-    expected_header = "CIK|Company Name|Form Type|Date Filed|Filename"
+    # SEC currently renders the fifth column as "File Name". Validate the
+    # stable four-column prefix so a harmless spacing change in that label does
+    # not turn a valid daily index into a false zero-filing day.
+    expected_header_prefix = "CIK|Company Name|Form Type|Date Filed|"
     pipe_rows = sum(1 for line in text.splitlines() if line.count("|") == 4)
-    if expected_header not in text or pipe_rows < 100:
+    if expected_header_prefix not in text or pipe_rows < 100:
         preview = text[:240].replace("\n", " ").replace("\r", " ")
         raise RuntimeError(
             f"SEC daily master validation failed for {date}: bytes={len(raw)}, "
