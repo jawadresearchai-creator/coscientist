@@ -18,7 +18,7 @@
     "rscript": {
       "cost": "FREE",
       "runtime": "Rscript",
-      "supports": ["CUSTOM_R_LOCKED", "STATISTICAL_MODEL"],
+      "supports": ["CUSTOM_R_LOCKED", "STATISTICAL_MODEL", "FACTORIAL_RNASEQ_DESEQ2"],
       "requires_user_key": false
     },
     "nextflow": {
