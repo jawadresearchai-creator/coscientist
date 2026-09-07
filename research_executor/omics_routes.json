@@ -1,0 +1,51 @@
+{
+  "schema_version": "cosci.omics-routes/1.0",
+  "policy": {
+    "zero_cost_only": true,
+    "automatic_paid_routes": false,
+    "route_order": [
+      "nfcore-fetchngs",
+      "ena-direct-fastq",
+      "sra-toolkit",
+      "geo-supplementary-http"
+    ]
+  },
+  "routes": {
+    "nfcore-fetchngs": {
+      "cost": "FREE",
+      "tool": "nf-core/fetchngs",
+      "version": "1.12.0",
+      "supports": ["SRR", "ERR", "DRR", "SRP", "ERP", "DRP", "GSE", "PRJ"],
+      "integrity": "archive MD5",
+      "requires_user_key": false
+    },
+    "pysradb-resolution": {
+      "cost": "FREE",
+      "tool": "pysradb",
+      "supports": ["GSE", "GSM", "SRP", "SRR"],
+      "requires_user_key": false
+    },
+    "ena-direct-fastq": {
+      "cost": "FREE",
+      "tool": "ENA Portal API + HTTPS FASTQ",
+      "supports": ["SRR", "ERR", "DRR", "SRP", "ERP", "DRP", "PRJ"],
+      "integrity": "ENA MD5 + local SHA-256",
+      "resume": true,
+      "requires_user_key": false
+    },
+    "sra-toolkit": {
+      "cost": "FREE",
+      "tool": "NCBI SRA Toolkit",
+      "supports": ["SRR", "ERR", "DRR"],
+      "fallback": true,
+      "requires_user_key": false
+    },
+    "geo-supplementary-http": {
+      "cost": "FREE",
+      "tool": "NCBI GEO HTTPS/FTP",
+      "supports": ["GSE", "GSM"],
+      "fallback": true,
+      "requires_user_key": false
+    }
+  }
+}
