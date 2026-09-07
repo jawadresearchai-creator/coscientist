@@ -1,4 +1,4 @@
-name: Research Executor Adversarial Review Smoke
+name: Research Executor Completion-First Review Smoke
 
 on:
   push:
@@ -9,14 +9,12 @@ on:
       - ".github/workflows/research-executor-adversarial-smoke.yml"
   workflow_dispatch:
     inputs:
-      blocked_job_id:
-        description: "Opaque blocked acceptance job ID"
+      cycle1_job_id:
         required: true
-        default: "COSCI-S10-BLOCK-001"
-      repaired_job_id:
-        description: "Opaque repaired acceptance job ID"
+        default: "COSCI-S10-CYCLE1-001"
+      cycle2_job_id:
         required: true
-        default: "COSCI-S10-REPAIR-001"
+        default: "COSCI-S10-CYCLE2-001"
 
 jobs:
   adversarial-smoke:
@@ -30,39 +28,36 @@ jobs:
           python-version: "3.12"
       - name: Install zero-cost regression dependencies
         run: python -m pip install --disable-pip-version-check pytest python-docx==1.2.0 reportlab==5.0.1 Pillow==12.3.0
-      - name: Run full executor tests including adversarial policy
+      - name: Run full executor tests including completion-first policy
         run: python -m pytest research_executor/tests -q
-      - name: Execute blocked private review job
+      - name: Cycle 1 - repair and review once more
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
         run: |
-          python -m research_executor.adversarial --job-id "${{ inputs.blocked_job_id || 'COSCI-S10-BLOCK-001' }}" --public-status out/blocked.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p=json.loads(Path("out/blocked.json").read_text())
-          assert p["privacy_class"]=="PUBLIC_EXECUTOR_SAFE"
-          PY
-      - name: Execute repaired private review job
+          python -m research_executor.adversarial --job-id "${{ inputs.cycle1_job_id || 'COSCI-S10-CYCLE1-001' }}" --public-status out/cycle1.json
+      - name: Cycle 2 - proceed with limitations
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
           GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
         run: |
-          python -m research_executor.adversarial --job-id "${{ inputs.repaired_job_id || 'COSCI-S10-REPAIR-001' }}" --public-status out/repaired.json
+          python -m research_executor.adversarial --job-id "${{ inputs.cycle2_job_id || 'COSCI-S10-CYCLE2-001' }}" --public-status out/cycle2.json
+      - name: Public privacy check
+        run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          for fn in ("out/blocked.json","out/repaired.json"):
+          for fn in ("out/cycle1.json", "out/cycle2.json"):
               p=json.loads(Path(fn).read_text())
               assert p["privacy_class"]=="PUBLIC_EXECUTOR_SAFE"
+              assert p["task_type"]=="ADVERSARIAL_REVIEW"
               text=json.dumps(p).lower()
-              for forbidden in ("finding_id","issue_ledger","release_blocker","rationale","drive_file_id"):
+              for forbidden in ("finding_id","issue_ledger","evidence","rationale","drive_file_id"):
                   assert forbidden not in text
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: research-adversarial-status-${{ github.run_id }}
+          name: research-completion-review-status-${{ github.run_id }}
           path: out/*.json
