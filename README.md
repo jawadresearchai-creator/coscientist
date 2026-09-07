@@ -148,7 +148,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-The V4.7.0 tree currently collects **414 tests**. The suite covers package integrity, paper-local lifecycle compatibility, multi-paper concurrency/isolation, Director routing, explicit owner withdrawal, freeze/AnalysisLock/provenance contracts, Astra V3 repair invariants, current-period cross-taxonomy SEC fact selection, literal security-identifier preservation (including ticker `NA`), literal-reader recursion protection, and adversarial integrity gates.
+The V4.7.0 tree currently collects **420 tests**. The suite covers package integrity, paper-local lifecycle compatibility, multi-paper concurrency/isolation, Director routing, explicit owner withdrawal, freeze/AnalysisLock/provenance contracts, Astra V3 repair invariants, current-period cross-taxonomy SEC fact selection, literal security-identifier preservation (including ticker `NA`), literal-reader recursion protection, and adversarial integrity gates.
 
 ## ChatGPT operation
 
