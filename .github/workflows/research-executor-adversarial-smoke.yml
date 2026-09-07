@@ -1,0 +1,64 @@
+name: Research Executor Adversarial Review Smoke
+
+on:
+  push:
+    paths:
+      - "research_executor/adversarial.py"
+      - "research_executor/public_status.py"
+      - "research_executor/tests/test_adversarial.py"
+      - ".github/workflows/research-executor-adversarial-smoke.yml"
+  workflow_dispatch:
+    inputs:
+      blocked_job_id:
+        description: "Opaque blocked acceptance job ID"
+        required: true
+        default: "COSCI-S10-BLOCK-001"
+      repaired_job_id:
+        description: "Opaque repaired acceptance job ID"
+        required: true
+        default: "COSCI-S10-REPAIR-001"
+
+jobs:
+  adversarial-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run full executor tests including adversarial policy
+        run: python -m pytest research_executor/tests -q
+      - name: Execute blocked private review job
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m research_executor.adversarial --job-id "${{ inputs.blocked_job_id || 'COSCI-S10-BLOCK-001' }}" --public-status out/blocked.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("out/blocked.json").read_text())
+          assert p["privacy_class"]=="PUBLIC_EXECUTOR_SAFE"
+          PY
+      - name: Execute repaired private review job
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m research_executor.adversarial --job-id "${{ inputs.repaired_job_id || 'COSCI-S10-REPAIR-001' }}" --public-status out/repaired.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for fn in ("out/blocked.json","out/repaired.json"):
+              p=json.loads(Path(fn).read_text())
+              assert p["privacy_class"]=="PUBLIC_EXECUTOR_SAFE"
+              text=json.dumps(p).lower()
+              for forbidden in ("finding_id","issue_ledger","release_blocker","rationale","drive_file_id"):
+                  assert forbidden not in text
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-adversarial-status-${{ github.run_id }}
+          path: out/*.json
