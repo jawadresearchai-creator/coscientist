@@ -1,0 +1,86 @@
+{
+  "build_outputs": [
+    "canonical_manuscript.json",
+    "journal_requirements.json",
+    "citation_ledger.json",
+    "figure_table_registry.json",
+    "manuscript.docx",
+    "manuscript.pdf",
+    "build_manifest.json"
+  ],
+  "canonical_source": {
+    "required_sections": [
+      "title",
+      "document_status",
+      "sections",
+      "citations",
+      "figures",
+      "tables",
+      "source_artifacts",
+      "journal_requirements_sha256"
+    ],
+    "schema_version": "cosci.manuscript-source/1.0"
+  },
+  "citation_routes": [
+    {
+      "cost": "FREE",
+      "endpoint": "https://api.crossref.org/works/{doi}",
+      "identifier": "DOI",
+      "route_id": "crossref-doi"
+    }
+  ],
+  "journal_requirement_routes": [
+    {
+      "cost": "FREE",
+      "role": "retrieve official journal guidance privately",
+      "route_id": "official-http",
+      "schemes": [
+        "https"
+      ]
+    }
+  ],
+  "manubot_quarto_concepts": [
+    "single source of truth",
+    "machine-readable citations",
+    "rebuildable outputs",
+    "content/build separation",
+    "deterministic build manifest",
+    "journal-specific rendering overrides"
+  ],
+  "policy": {
+    "acceptance_fixture_must_be_labeled": true,
+    "artifact_hash_validation_required": true,
+    "automatic_paid_routes": false,
+    "checkpoint_required": true,
+    "citation_verification_required": true,
+    "deterministic_build_required": true,
+    "docx_required": true,
+    "figure_table_traceability_required": true,
+    "final_scientific_judgment_reserved_for_research_director": true,
+    "idempotent_rerun_required": true,
+    "journal_requirements_provenance_required": true,
+    "journal_specific_overrides_take_precedence": true,
+    "official_journal_requirements_required": true,
+    "pdf_required": true,
+    "private_manuscript_only": true,
+    "single_canonical_source_required": true,
+    "zero_cost_only": true
+  },
+  "rendering": {
+    "docx": {
+      "engine": "python-docx",
+      "normalization": "fixed core metadata + normalized OOXML zip timestamps",
+      "version": "1.2.0"
+    },
+    "image": {
+      "engine": "Pillow",
+      "version": "12.3.0"
+    },
+    "pdf": {
+      "engine": "reportlab",
+      "invariant_mode": true,
+      "version": "5.0.1"
+    }
+  },
+  "schema_version": "cosci.publication-registry/1.0"
+}
