@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 JOB_ID_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{2,127}$")
-ALLOWED_TASK_TYPES = {"SMOKE_TEST", "DATA_ACQUISITION", "ANALYSIS"}
+ALLOWED_TASK_TYPES = {"SMOKE_TEST", "DATA_ACQUISITION", "ANALYSIS", "LITERATURE"}
 PUBLIC_SCHEMA_VERSION = "cosci.public-status/1.0"
 
 
@@ -42,6 +42,8 @@ def build_public_status(job_id: str, task_type: str = "SMOKE_TEST") -> dict[str,
         checks.append({"name": "private_acquisition_execution", "status": "PASS"})
     elif task_type == "ANALYSIS":
         checks.append({"name": "private_deterministic_analysis", "status": "PASS"})
+    elif task_type == "LITERATURE":
+        checks.append({"name": "private_literature_evidence_execution", "status": "PASS"})
     return {
         "schema_version": PUBLIC_SCHEMA_VERSION,
         "job_id": job_id,
@@ -81,7 +83,8 @@ def validate_public_status(status: dict[str, Any]) -> None:
     forbidden_keys = {
         "research_question", "hypothesis", "manuscript", "private_manifest",
         "drive_token", "refresh_token", "api_key", "credential_value", "literature_corpus",
-        "source_url", "drive_file_id", "input_file_id", "selected_accession"
+        "source_url", "drive_file_id", "input_file_id", "selected_accession", "search_query",
+        "claims", "doi", "pmid", "pmcid", "openalex_id", "title", "abstract"
     }
     present_forbidden = forbidden_keys & set(status)
     if present_forbidden:
