@@ -5,4 +5,6 @@ parent_snapshot=analysis_ready_data_v2_20260907
 pre_event_cutoff=2026-08-06
 outcome_inspected=NO
 repair_scope=SEC full-text truncation; exact paired-return beta windows; strict component-defined leverage
+execution_hardening=SEC complete-submission fallback; storage-level price cutoff predicate
 launch_date=2026-09-07
+launch_attempt=2
