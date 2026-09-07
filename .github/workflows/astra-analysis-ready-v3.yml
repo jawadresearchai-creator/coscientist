@@ -9,6 +9,7 @@ on:
       - "src/coscientist/eventstudy_price_metrics.py"
       - "scripts/build_astra_analysis_ready_v3.py"
       - "tests/test_astra_v3.py"
+      - "README.md"
       - ".github/workflows/astra-analysis-ready-v3.yml"
       - "ops/astra_v3_launch.txt"
   workflow_dispatch:
