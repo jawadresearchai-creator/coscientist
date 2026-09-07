@@ -26,8 +26,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install zero-cost test dependency
-        run: python -m pip install --disable-pip-version-check pytest
+      - name: Install zero-cost regression dependencies
+        run: python -m pip install --disable-pip-version-check pytest python-docx==1.2.0 reportlab==5.0.1 Pillow==12.3.0
       - name: Run full executor tests including adversarial policy
         run: python -m pytest research_executor/tests -q
       - name: Execute blocked private review job
