@@ -56,7 +56,7 @@ jobs:
           Rscript --version
           nextflow -version
 
-      - name: Live-smoke R and Nextflow adapters
+      - name: Live-smoke R, Nextflow and nf-core analysis adapters
         run: |
           set -euo pipefail
           Rscript --vanilla -e 'x <- mean(c(1,2,3)); stopifnot(abs(x-2) < 1e-12)' \
@@ -73,8 +73,20 @@ jobs:
             cat "$RUNNER_TEMP/nextflow-analysis-smoke.txt"
             exit "$rc"
           fi
-          cat "$RUNNER_TEMP/nextflow-analysis-smoke.txt"
           echo "NEXTFLOW_ANALYSIS_ADAPTER=PASS"
+
+          set +e
+          nextflow run nf-core/rnaseq -r 3.26.0 --help \
+            > "$RUNNER_TEMP/nfcore-analysis-smoke.txt" 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "NFCORE_ANALYSIS_ADAPTER=FAILED"
+            cat "$RUNNER_TEMP/nfcore-analysis-smoke.txt"
+            exit "$rc"
+          fi
+          test -s "$RUNNER_TEMP/nfcore-analysis-smoke.txt"
+          echo "NFCORE_ANALYSIS_ADAPTER=PASS"
 
       - name: Run full executor tests including deterministic analysis
         run: >-
