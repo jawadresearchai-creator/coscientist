@@ -1,0 +1,133 @@
+name: Research CoScientist Literature Evidence Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Opaque Research CoScientist literature job ID only"
+        required: true
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "research_executor/literature.py"
+      - "research_executor/literature_routes.json"
+      - "research_executor/tests/test_literature.py"
+      - "research_executor/public_status.py"
+      - "research_executor/public-status.schema.json"
+      - ".github/workflows/research-executor-literature-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-literature-${{ github.event_name == 'workflow_dispatch' && inputs.job_id || 'COSCI-S07-LIT-001' }}
+  cancel-in-progress: false
+
+jobs:
+  literature-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COSCI_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.job_id || 'COSCI-S07-LIT-001' }}
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+    steps:
+      - name: Checkout public executor
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run full executor tests including literature evidence
+        run: >-
+          python -m unittest
+          research_executor.tests.test_executor
+          research_executor.tests.test_drive_bridge
+          research_executor.tests.test_acquisition
+          research_executor.tests.test_omics
+          research_executor.tests.test_analysis
+          research_executor.tests.test_literature
+          -v
+
+      - name: Live-smoke zero-cost scholarly sources
+        env:
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from research_executor.literature import search_crossref, search_europe_pmc, search_openalex
+
+          probe = "plant extracellular ATP signaling"
+          cr = search_crossref(probe, 2)
+          ep = search_europe_pmc(probe, 2)
+          if not cr or not ep:
+              raise SystemExit("required keyless scholarly source returned no smoke records")
+          print(f"CROSSREF_ROUTE=PASS count={len(cr)}")
+          print(f"EUROPE_PMC_ROUTE=PASS count={len(ep)}")
+          oa, status = search_openalex(probe, 2, api_key=os.getenv("OPENALEX_API_KEY") or None)
+          if status == "PASS" and not oa:
+              raise SystemExit("OpenAlex free-key route reported PASS but returned no records")
+          print(f"OPENALEX_OPTIONAL_ROUTE={status} count={len(oa)}")
+          PY
+
+      - name: Execute private Drive literature evidence job
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+        run: |
+          set +e
+          python -m research_executor.literature \
+            --job-id "$COSCI_JOB_ID" \
+            --public-status out/literature-status.json \
+            > "$RUNNER_TEMP/literature-private-cli.log" 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "LITERATURE_EVIDENCE=FAILED job_id=$COSCI_JOB_ID"
+            tail -n 40 "$RUNNER_TEMP/literature-private-cli.log"
+            exit "$rc"
+          fi
+          echo "LITERATURE_EVIDENCE=PASS job_id=$COSCI_JOB_ID"
+
+      - name: Validate public receipt contains no private literature details
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_executor.public_status import validate_public_status
+
+          p = Path("out/literature-status.json")
+          status = json.loads(p.read_text(encoding="utf-8"))
+          validate_public_status(status)
+          forbidden = {
+              "research_question", "hypothesis", "private_manifest", "payload", "search_query",
+              "claims", "literature_corpus", "evidence_packets", "claim_source_map", "novelty_court",
+              "source_url", "sources", "title", "abstract", "doi", "pmid", "pmcid", "openalex_id",
+              "drive_file_id", "api_key", "refresh_token", "credential_value"
+          }
+          def keys(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      yield str(key).lower()
+                      yield from keys(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      yield from keys(child)
+          leaked = sorted(forbidden.intersection(set(keys(status))))
+          if leaked:
+              raise SystemExit(f"private literature fields leaked to public artifact: {leaked}")
+          print("PUBLIC_EXECUTOR_SAFE literature receipt validation PASS")
+          PY
+
+      - name: Upload public-safe literature receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-literature-status-${{ env.COSCI_JOB_ID }}
+          path: out/literature-status.json
+          if-no-files-found: error
+          retention-days: 7
