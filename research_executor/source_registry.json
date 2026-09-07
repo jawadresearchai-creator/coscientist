@@ -1,0 +1,46 @@
+{
+  "schema_version": "cosci.source-registry/1.0",
+  "policy": {
+    "default_cost": "FREE_ONLY",
+    "automatic_paid_routes": false,
+    "manual_key_per_job_required": false
+  },
+  "source_classes": {
+    "HTTP_FILE": {
+      "description": "Direct public HTTP/HTTPS file acquisition with Range-based resume when supported.",
+      "routes": [
+        {
+          "route_id": "urllib-http-range",
+          "cost": "FREE",
+          "schemes": ["http", "https"],
+          "supports_resume": true,
+          "requires_credentials": false
+        }
+      ]
+    },
+    "REST_JSON_API": {
+      "description": "Public zero-cost JSON REST endpoint acquisition with JSON validation.",
+      "routes": [
+        {
+          "route_id": "urllib-json-api",
+          "cost": "FREE",
+          "schemes": ["https", "http"],
+          "supports_resume": false,
+          "requires_credentials": false
+        }
+      ]
+    },
+    "FTP_FILE": {
+      "description": "Public FTP file acquisition fallback using Python urllib.",
+      "routes": [
+        {
+          "route_id": "urllib-ftp",
+          "cost": "FREE",
+          "schemes": ["ftp"],
+          "supports_resume": false,
+          "requires_credentials": false
+        }
+      ]
+    }
+  }
+}
