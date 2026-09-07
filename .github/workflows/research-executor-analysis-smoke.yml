@@ -13,6 +13,7 @@ on:
     paths:
       - "research_executor/analysis.py"
       - "research_executor/analysis_routes.json"
+      - "research_executor/analysis_adapter_smoke.nf"
       - "research_executor/tests/test_analysis.py"
       - "research_executor/public_status.py"
       - ".github/workflows/research-executor-analysis-smoke.yml"
@@ -62,22 +63,8 @@ jobs:
             > "$RUNNER_TEMP/r-analysis-smoke.txt" 2>&1
           echo "R_ANALYSIS_ADAPTER=PASS"
 
-          cat > "$RUNNER_TEMP/analysis-smoke.nf" <<'NF'
-          nextflow.enable.dsl=2
-          process ANALYSIS_ADAPTER_SMOKE {
-            output:
-            path 'receipt.txt'
-            script:
-            """
-            printf 'nextflow-analysis-adapter-pass\n' > receipt.txt
-            """
-          }
-          workflow {
-            ANALYSIS_ADAPTER_SMOKE()
-          }
-          NF
-          (cd "$RUNNER_TEMP" && nextflow -ansi-log false run analysis-smoke.nf \
-            > "$RUNNER_TEMP/nextflow-analysis-smoke.txt" 2>&1)
+          nextflow -ansi-log false run research_executor/analysis_adapter_smoke.nf \
+            > "$RUNNER_TEMP/nextflow-analysis-smoke.txt" 2>&1
           echo "NEXTFLOW_ANALYSIS_ADAPTER=PASS"
 
       - name: Run full executor tests including deterministic analysis
