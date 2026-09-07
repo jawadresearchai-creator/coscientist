@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,8 @@ RD_ACTIONS = {
 class AdversarialError(AcquisitionError):
     pass
 
+def canonical_hash(obj: Any) -> str:
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 def validate_manifest(manifest: dict[str, Any], job_id: str) -> None:
     validate_job_id(job_id)
@@ -55,23 +58,22 @@ def validate_manifest(manifest: dict[str, Any], job_id: str) -> None:
     findings = params.get("findings")
     if not isinstance(findings, list):
         raise AdversarialError("findings must be a list")
-    ids: set[str] = set()
-    for finding in findings:
-        if not isinstance(finding, dict) or not finding.get("finding_id") or not finding.get("finding_type"):
+    ids = set()
+    for f in findings:
+        if not isinstance(f, dict) or not f.get("finding_id") or not f.get("finding_type"):
             raise AdversarialError("every finding needs finding_id and finding_type")
-        if finding["finding_id"] in ids:
+        if f["finding_id"] in ids:
             raise AdversarialError("finding IDs must be unique")
-        ids.add(finding["finding_id"])
-        if finding.get("severity") not in {"CRITICAL", "HIGH", "MEDIUM", "LOW"}:
+        ids.add(f["finding_id"])
+        if f.get("severity") not in {"CRITICAL","HIGH","MEDIUM","LOW"}:
             raise AdversarialError("invalid severity")
-        if finding.get("status") not in {"OPEN", "RESOLVED", "REBUTTED", "DOWNGRADED", "ACCEPTED_LIMITATION", "WAIVED"}:
+        if f.get("status") not in {"OPEN","RESOLVED","REBUTTED","DOWNGRADED","ACCEPTED_LIMITATION","WAIVED"}:
             raise AdversarialError("invalid finding status")
-        if not finding.get("evidence"):
+        if not f.get("evidence"):
             raise AdversarialError("every finding must be evidence-linked")
-        action = finding.get("research_director_action")
+        action = f.get("research_director_action")
         if action and action not in RD_ACTIONS:
             raise AdversarialError("invalid Research Director action")
-
 
 def classify(finding: dict[str, Any]) -> dict[str, Any]:
     item = dict(finding)
@@ -80,24 +82,21 @@ def classify(finding: dict[str, Any]) -> dict[str, Any]:
     if item["status"] == "WAIVED" and meets:
         raise AdversarialError("RELEASE_BLOCKER cannot be waived without evidence-based reclassification")
     item["automatic_release_block"] = bool(meets and item["status"] == "OPEN")
-    item["research_director_judgment_required"] = bool(
-        item["severity"] in {"CRITICAL", "HIGH"} and not meets and item["status"] == "OPEN"
-    )
+    if item["severity"] in {"CRITICAL","HIGH"} and not meets and item["status"] == "OPEN":
+        item["research_director_judgment_required"] = True
+    else:
+        item["research_director_judgment_required"] = False
     return item
-
 
 def review_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     issues = [classify(x) for x in findings]
-    by_role = {role: [] for role in REVIEWER_ROLES}
+    by_role = {r: [] for r in REVIEWER_ROLES}
     for issue in issues:
         role = issue.get("reviewer_role") or "DOMAIN_REVIEWER"
         if role not in by_role:
             role = "DOMAIN_REVIEWER"
         by_role[role].append(issue["finding_id"])
-    reports = [
-        {"reviewer_role": role, "finding_ids": ids, "finding_count": len(ids)}
-        for role, ids in by_role.items()
-    ]
+    reports = [{"reviewer_role": r, "finding_ids": ids, "finding_count": len(ids)} for r, ids in by_role.items()]
     blockers = [x["finding_id"] for x in issues if x["automatic_release_block"]]
     judgment = [x["finding_id"] for x in issues if x["research_director_judgment_required"]]
     synthesis = {
@@ -109,18 +108,17 @@ def review_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, Any]
     }
     return reports, {"issues": issues, "editor_synthesis": synthesis}
 
-
 def run_adversarial_job(job_id: str, client: Any | None = None, workdir: str | Path | None = None) -> dict[str, Any]:
     validate_job_id(job_id)
     client = client or _drive_client_from_env()
     job_folder = _search_job_folder(client, job_id)
-    folder_id = job_folder["id"]
-    manifest_obj = _child(client, folder_id, "job.json", folder=False)
-    checkpoints = _child(client, folder_id, "checkpoints", folder=True)
-    results = _child(client, folder_id, "results", folder=True)
-    logs = _child(client, folder_id, "logs", folder=True)
-    outputs = _child(client, folder_id, "outputs", folder=True)
-    metadata = _child(client, folder_id, "metadata", folder=True)
+    job_id_drive = job_folder["id"]
+    manifest_obj = _child(client, job_id_drive, "job.json", folder=False)
+    checkpoints = _child(client, job_id_drive, "checkpoints", folder=True)
+    results = _child(client, job_id_drive, "results", folder=True)
+    logs = _child(client, job_id_drive, "logs", folder=True)
+    outputs = _child(client, job_id_drive, "outputs", folder=True)
+    metadata = _child(client, job_id_drive, "metadata", folder=True)
 
     td = tempfile.TemporaryDirectory(prefix="cosci-review-") if workdir is None else None
     root = Path(td.name if td else workdir)
@@ -136,121 +134,87 @@ def run_adversarial_job(job_id: str, client: Any | None = None, workdir: str | P
                 raise AdversarialError("existing result belongs to a different manifest")
             return result
 
-        checkpoint = {
-            "schema_version": "cosci.checkpoint/1.0",
-            "job_id": job_id,
-            "stage": "MANIFEST_VALIDATED",
-            "manifest_sha256": manifest_sha,
-            "privacy_class": "PRIVATE_RESEARCH",
+        cp = {
+            "schema_version":"cosci.checkpoint/1.0","job_id":job_id,
+            "stage":"MANIFEST_VALIDATED","manifest_sha256":manifest_sha,
+            "privacy_class":"PRIVATE_RESEARCH",
         }
-        cp_path = root / "checkpoint.json"
-        _write_json(cp_path, checkpoint)
-        client.upload(str(cp_path), checkpoints["id"], cp_path.name)
+        p = root / "checkpoint.json"; _write_json(p, cp); client.upload(str(p), checkpoints["id"], p.name)
 
         reports, reviewed = review_findings((manifest.get("parameters") or {}).get("findings") or [])
         issue_ledger = {
-            "schema_version": "cosci.issue-ledger/1.0",
-            "policy_version": "1.1",
-            "issues": reviewed["issues"],
+            "schema_version":"cosci.issue-ledger/1.0",
+            "policy_version":"1.1",
+            "issues":reviewed["issues"],
         }
         rebuttal = {
-            "schema_version": "cosci.rebuttal-matrix/1.0",
-            "items": [
+            "schema_version":"cosci.rebuttal-matrix/1.0",
+            "items":[
                 {
-                    "finding_id": x["finding_id"],
-                    "status": x["status"],
-                    "research_director_action": x.get("research_director_action"),
-                    "rationale": x.get("rationale"),
-                }
-                for x in reviewed["issues"]
+                    "finding_id":x["finding_id"],
+                    "status":x["status"],
+                    "research_director_action":x.get("research_director_action"),
+                    "rationale":x.get("rationale"),
+                } for x in reviewed["issues"]
             ],
         }
         editor = reviewed["editor_synthesis"]
         release_gate = {
-            "schema_version": "cosci.release-gate/1.0",
-            "status": "BLOCKED" if editor["unresolved_release_blockers"] else "PASS",
-            "unresolved_release_blockers": editor["unresolved_release_blockers"],
-            "nonblocking_judgment_items": editor["research_director_judgment_required"],
-            "rule": "Only unresolved RELEASE_BLOCKER findings automatically prevent final/release state.",
+            "schema_version":"cosci.release-gate/1.0",
+            "status":"BLOCKED" if editor["unresolved_release_blockers"] else "PASS",
+            "unresolved_release_blockers":editor["unresolved_release_blockers"],
+            "nonblocking_judgment_items":editor["research_director_judgment_required"],
+            "rule":"Only unresolved RELEASE_BLOCKER findings automatically prevent final/release state.",
         }
         payloads = {
-            "reviewer_reports.json": {"schema_version": "cosci.reviewer-reports/1.0", "reports": reports},
-            "issue_ledger.json": issue_ledger,
-            "editor_synthesis.json": editor,
-            "rebuttal_matrix.json": rebuttal,
-            "release_gate.json": release_gate,
+            "reviewer_reports.json":{"schema_version":"cosci.reviewer-reports/1.0","reports":reports},
+            "issue_ledger.json":issue_ledger,
+            "editor_synthesis.json":editor,
+            "rebuttal_matrix.json":rebuttal,
+            "release_gate.json":release_gate,
         }
-        output_refs: list[dict[str, Any]] = []
+        output_refs = []
         for name, obj in payloads.items():
-            path = root / name
-            _write_json(path, obj)
-            uploaded = client.upload(str(path), outputs["id"], name)
-            output_refs.append({
-                "name": name,
-                "drive_file_id": uploaded["id"],
-                "sha256": sha256_file(path),
-                "bytes": path.stat().st_size,
-            })
+            p = root / name; _write_json(p,obj); up=client.upload(str(p),outputs["id"],name)
+            output_refs.append({"name":name,"drive_file_id":up,"sha256":sha256_file(p),"bytes":p.stat().st_size})
 
-        provenance = {
-            "schema_version": "cosci.review-provenance/1.0",
-            "job_id": job_id,
-            "manifest_sha256": manifest_sha,
-            "policy_version": "1.1",
-            "reviewer_roles": list(REVIEWER_ROLES),
-            "output_hashes": {x["name"]: x["sha256"] for x in output_refs},
+        prov = {
+            "schema_version":"cosci.review-provenance/1.0","job_id":job_id,
+            "manifest_sha256":manifest_sha,"policy_version":"1.1",
+            "reviewer_roles":list(REVIEWER_ROLES),"output_hashes":{x["name"]:x["sha256"] for x in output_refs},
         }
-        prov_path = root / "review_provenance.json"
-        _write_json(prov_path, provenance)
-        prov_upload = client.upload(str(prov_path), metadata["id"], prov_path.name)
+        pp=root/"review_provenance.json"; _write_json(pp,prov); pu=client.upload(str(pp),metadata["id"],pp.name)
 
         blocked = bool(editor["unresolved_release_blockers"])
         result = {
-            "schema_version": "cosci.result/1.0",
-            "job_id": job_id,
-            "project_id": manifest.get("project_id"),
-            "task_type": "ADVERSARIAL_REVIEW",
-            "status": "SUCCEEDED",
-            "privacy_class": "PRIVATE_RESEARCH",
-            "outputs": output_refs,
-            "validation": {
-                "passed": True,
-                "checks": [
-                    {"name": "evidence_linked_findings", "status": "PASS"},
-                    {"name": "stable_issue_ids", "status": "PASS"},
-                    {"name": "release_blocker_policy_v1_1", "status": "PASS"},
-                    {"name": "editor_synthesis", "status": "PASS"},
-                    {"name": "research_director_override_policy", "status": "PASS"},
-                    {"name": "private_drive_publication", "status": "PASS"},
-                ],
+            "schema_version":"cosci.result/1.0","job_id":job_id,
+            "project_id":manifest.get("project_id"),"task_type":"ADVERSARIAL_REVIEW",
+            "status":"SUCCEEDED","privacy_class":"PRIVATE_RESEARCH",
+            "outputs":output_refs,
+            "validation":{"passed":True,"checks":[
+                {"name":"evidence_linked_findings","status":"PASS"},
+                {"name":"stable_issue_ids","status":"PASS"},
+                {"name":"release_blocker_policy_v1_1","status":"PASS"},
+                {"name":"editor_synthesis","status":"PASS"},
+                {"name":"research_director_override_policy","status":"PASS"},
+                {"name":"private_drive_publication","status":"PASS"},
+            ]},
+            "metrics":{
+                "finding_count":len(issue_ledger["issues"]),
+                "release_blocker_count":len(editor["unresolved_release_blockers"]),
+                "judgment_item_count":len(editor["research_director_judgment_required"]),
             },
-            "metrics": {
-                "finding_count": len(issue_ledger["issues"]),
-                "release_blocker_count": len(editor["unresolved_release_blockers"]),
-                "judgment_item_count": len(editor["research_director_judgment_required"]),
-            },
-            "next_state": "BLOCKED_FOR_RELEASE" if blocked else "READY_FOR_FINAL_PACKAGE",
-            "provenance": {
-                "manifest_sha256": manifest_sha,
-                "executor": "GITHUB_ACTIONS_PUBLIC",
-                "review_provenance_file_id": prov_upload["id"],
-            },
+            "next_state":"BLOCKED_FOR_RELEASE" if blocked else "READY_FOR_FINAL_PACKAGE",
+            "provenance":{"manifest_sha256":manifest_sha,"executor":"GITHUB_ACTIONS_PUBLIC","review_provenance_file_id":pu},
         }
-        result_path = root / "result.json"
-        _write_json(result_path, result)
-        client.upload(str(result_path), results["id"], result_path.name)
-
-        log_path = root / "execution.log"
-        log_path.write_text(
+        rp=root/"result.json"; _write_json(rp,result); client.upload(str(rp),results["id"],rp.name)
+        lp=root/"execution.log"; lp.write_text(
             f"job_id={job_id}\nreview=PASS\nrelease_gate={release_gate['status']}\nprivate_publication=PASS\n",
-            encoding="utf-8",
-        )
-        client.upload(str(log_path), logs["id"], log_path.name)
+            encoding="utf-8"
+        ); client.upload(str(lp),logs["id"],lp.name)
         return result
     finally:
-        if td:
-            td.cleanup()
-
+        if td: td.cleanup()
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -258,7 +222,7 @@ def main() -> int:
     parser.add_argument("--public-status", default="out/review-status.json")
     args = parser.parse_args()
     result = run_adversarial_job(args.job_id)
-    write_public_status(args.job_id, args.public_status, "ADVERSARIAL_REVIEW")
+    write_public_status(args.job_id,args.public_status,"ADVERSARIAL_REVIEW")
     print(f"Adversarial review PASS for job_id={args.job_id}; next_state={result['next_state']}")
     return 0
 
