@@ -54,7 +54,7 @@ jobs:
             https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-ubuntu64.tar.gz \
             -o "$RUNNER_TEMP/sratoolkit.tar.gz"
           tar -xzf "$RUNNER_TEMP/sratoolkit.tar.gz" -C "$RUNNER_TEMP/sratoolkit"
-          PREFETCH_BIN="$(find "$RUNNER_TEMP/sratoolkit" -type f -name prefetch | head -n 1)"
+          PREFETCH_BIN="$(find "$RUNNER_TEMP/sratoolkit" -name prefetch | head -n 1)"
           test -n "$PREFETCH_BIN"
           SRA_BIN_DIR="$(dirname "$PREFETCH_BIN")"
           test -x "$SRA_BIN_DIR/prefetch"
