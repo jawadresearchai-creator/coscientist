@@ -30,6 +30,7 @@ jobs:
     env:
       COSCI_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.job_id || 'COSCI-S05-OMICS-001' }}
       PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+      NXF_VER: "25.10.4"
     steps:
       - name: Checkout public executor
         uses: actions/checkout@v4
@@ -38,6 +39,59 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install zero-cost omics fallback toolchain
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "pysradb==2.4.0"
+
+          curl -fsSL https://get.nextflow.io | bash
+          sudo install -m 0755 nextflow /usr/local/bin/nextflow
+          rm -f nextflow
+
+          mkdir -p "$RUNNER_TEMP/sratoolkit"
+          curl -fsSL \
+            https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-ubuntu64.tar.gz \
+            -o "$RUNNER_TEMP/sratoolkit.tar.gz"
+          tar -xzf "$RUNNER_TEMP/sratoolkit.tar.gz" -C "$RUNNER_TEMP/sratoolkit"
+          SRA_BIN_DIR="$(dirname "$(find "$RUNNER_TEMP/sratoolkit" -type f -name prefetch -perm -111 | head -n 1)")"
+          test -n "$SRA_BIN_DIR"
+          echo "$SRA_BIN_DIR" >> "$GITHUB_PATH"
+          export PATH="$SRA_BIN_DIR:$PATH"
+
+          pysradb --version
+          nextflow -version
+          prefetch --version
+          fasterq-dump --version
+
+      - name: Live-smoke nf-core, pysradb, SRA Toolkit and GEO routes
+        run: |
+          set -euo pipefail
+
+          pysradb srr-to-srp SRR9984183 > "$RUNNER_TEMP/pysradb-smoke.txt" 2>&1
+          test -s "$RUNNER_TEMP/pysradb-smoke.txt"
+          echo "PYSRADB_ROUTE=PASS"
+
+          nextflow run nf-core/fetchngs -r 1.12.0 --help \
+            > "$RUNNER_TEMP/fetchngs-help.txt" 2>&1
+          test -s "$RUNNER_TEMP/fetchngs-help.txt"
+          echo "NFCORE_FETCHNGS_ROUTE=PASS"
+
+          python - <<'PY'
+          from research_executor.omics import fetch_geo_supplementary_metadata
+          fetch_geo_supplementary_metadata("GSE147507")
+          print("GEO_METADATA_ROUTE=PASS")
+          PY
+
+          mkdir -p "$RUNNER_TEMP/sra-prefetch" "$RUNNER_TEMP/sra-fastq"
+          prefetch ERR1160846 --max-size 100M --output-directory "$RUNNER_TEMP/sra-prefetch" \
+            > "$RUNNER_TEMP/prefetch-smoke.txt" 2>&1
+          SRA_OBJECT="$(find "$RUNNER_TEMP/sra-prefetch" -type f -name 'ERR1160846.sra' | head -n 1)"
+          test -n "$SRA_OBJECT"
+          fasterq-dump "$SRA_OBJECT" --outdir "$RUNNER_TEMP/sra-fastq" \
+            > "$RUNNER_TEMP/fasterq-smoke.txt" 2>&1
+          test -s "$RUNNER_TEMP/sra-fastq/ERR1160846.fastq"
+          echo "SRA_TOOLKIT_ROUTE=PASS"
 
       - name: Run executor, Drive bridge, acquisition and omics tests
         run: >-
