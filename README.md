@@ -1,16 +1,30 @@
-# CoScientist V4.6.1 — single-paper Management Science research engine
+# CoScientist V4.7.0 — multi-paper Management Science research engine
 
-CoScientist is a deterministic research-governance and analysis kernel for **one Management Science paper at a time**. Reasoning models may perform judgment, literature interpretation, adversarial review and prose through explicit handoffs, but `src/coscientist/` never calls an LLM directly.
+CoScientist is a deterministic research-governance and analysis kernel for **multiple independent Management Science papers at the same time**. Reasoning models may perform judgment, literature interpretation, adversarial review and prose through explicit handoffs, but `src/coscientist/` never calls an LLM directly.
 
 ## Operating rule
 
-Exactly one paper may be scientifically active. The rule prevents parallel papers; it does **not** trap the owner in a topic.
+There is no global one-paper lock.
 
-Broad topic discovery is allowed when there is no active paper, the current paper is `SUBMISSION_READY`, it is `RETIRED` for a genuine scientific blocker, or the owner explicitly marks it `USER_WITHDRAWN`.
+Every paper owns its own lifecycle state, Director state, answer inbox, freeze, AnalysisLock, receipts, datasets, results and manuscript. Multiple papers may be `ACTIVE`, `REPAIR` or `PAUSED` concurrently.
+
+A root registry indexes them:
 
 ```text
-NO_ACTIVE_PAPER
-  -> SELECTED
+state/paper_registry.json
+state/<paper_id>/paper_state.json
+state/<paper_id>/director.json
+state/<paper_id>/director_answer.json
+```
+
+A `focus_paper_id` is only a default routing/UI convenience. Changing focus does not pause, withdraw, retire or replace any other paper.
+
+## Paper-local lifecycle
+
+Each paper independently follows:
+
+```text
+SELECTED
   -> DEVELOPING
   -> DATA_FEASIBLE
   -> DESIGN_READY
@@ -20,28 +34,48 @@ NO_ACTIVE_PAPER
   -> MANUSCRIPT
   -> FINAL_AUDIT
   -> SUBMISSION_READY
-
-At any non-terminal active stage:
-  explicit owner instruction -> USER_WITHDRAWN -> fresh discovery
 ```
 
-`RETIRED` remains reserved for genuine scientific impossibility. `USER_WITHDRAWN` is a separate owner priority/preference decision and does not require inventing a blocker.
+A paper may independently become `USER_WITHDRAWN` by explicit owner instruction or `RETIRED` for a genuine scientific blocker. Those transitions affect only that paper.
 
-If the owner explicitly names the next topic, that direction is carried into the next Director discovery action. The system evaluates and refines that topic rather than silently substituting an unrelated one.
+## Multi-paper router
 
-## Three control records
+Use the paper registry and an explicit paper ID:
+
+```bash
+python -m coscientist.director_multi \
+  --registry state/paper_registry.json \
+  --paper-id MS-ASTRA-REVALUE-2026 \
+  status
+```
+
+To list or change registry focus:
+
+```bash
+python -m coscientist.multi_paper --registry state/paper_registry.json list
+python -m coscientist.multi_paper --registry state/paper_registry.json \
+  focus --paper-id MS-ASTRA-REVALUE-2026
+```
+
+The mature `SinglePaperState` implementation remains as the **paper-local** lifecycle state machine for backward compatibility. Its name no longer means that the whole CoScientist may operate only one paper.
+
+## Legacy compatibility
+
+The old root files:
 
 ```text
-single_paper.json       scientific lifecycle and one active Topic Charter
-director.json           one persistent next action + compact phase records
-director_answer.json    one overwriteable reasoning-plane answer inbox
+state/single_paper.json
+state/director.json
+state/director_answer.json
 ```
 
-A stale answer is a no-op. A runner restart does not recreate topic discovery. A new paper resets Director records instead of inheriting historical candidate state.
+are retained as compatibility/history artifacts. New work uses `paper_registry.json` and paper-scoped paths.
+
+A non-destructive migration utility copies the legacy current paper into its own namespace while leaving those original files untouched.
 
 ## Few roles, many skills
 
-There are only three architectural roles:
+There are three architectural roles:
 
 1. **Research Director** — deterministic authority; not an LLM agent.
 2. **Scientific Reasoning** — normal LLM context for literature, theory, design reasoning, manuscript drafting and ordinary repair.
@@ -49,55 +83,23 @@ There are only three architectural roles:
 
 The current skills are Humanizer v2.0, LiteratureTheory v1.0, StudyDesignReasoner v1.0, HostileReviewer v1.0, ManuscriptWriter v1.0, CitationIntegrity v1.0, and FinalAuditReasoner v1.0.
 
-## Owner withdrawal
+## Director rule
 
-An explicit owner instruction such as "stop this topic", "I don't want to continue this paper", or "switch to X instead" authorizes deterministic withdrawal.
+There is at most one pending Director action **per paper**, not one globally.
 
-Withdrawal:
-- is valid at any non-terminal active stage;
-- is not a scientific failure;
-- clears the stale pending Director action through reconciliation;
-- releases the one-paper lock;
-- may carry `owner_next_topic_direction` into the next discovery action;
-- never creates two active papers.
+Switching from Paper A to Paper B does not withdraw or terminate Paper A. Each Director action is routed through that paper's own `director.json` and `director_answer.json`.
 
-A reasoning model must not infer owner withdrawal from null results, difficult repairs, or ordinary failure. It requires an explicit owner instruction.
-
-The v4.6.1 facade is:
-
-```bash
-python -m coscientist.director_v461 --state state/single_paper.json \
-  --director state/director.json --catalog state/gms_lake_catalog.json status
-
-python -m coscientist.director_v461 --state state/single_paper.json \
-  --director state/director.json --catalog state/gms_lake_catalog.json \
-  withdraw --reason "Owner changed research priority" \
-  --next-topic "event study of a new AI model release"
-```
-
-## V4.6 integrity rule
+## Integrity rule
 
 **Reasoning may propose, interpret and audit. Mechanically knowable facts must come from deterministic receipts.**
 
 Write-once lifecycle receipts include:
-- `DATASET_SET` — exact GMS dataset identities and SHA-256 values;
+- `DATASET_SET` — exact dataset identities and SHA-256 values;
 - `POWER` — deterministic pre-period power/MDE result;
 - `ANALYSIS` — freeze, AnalysisLock, exact Git SHA, result-manifest hash, workflow run and verified publication;
 - `FINAL_AUDIT_EVIDENCE` — manuscript hash plus mechanically verified numeric provenance and reproducibility evidence.
 
-### Hardened gates
-
-- `DESIGN_CLOSURE` ignores reasoning-supplied dataset hashes and power PASS values and injects canonical receipts.
-- `PRE_FREEZE_AUDIT` PASS is conjunctive across novelty, measurement, identification, power and access/licence/ethics.
-- reasoning-declared external-source verification cannot close essential data feasibility; the source must first be materialised/registered in GMS.
-- `RESULTS_COMPLETE` requires a canonical analysis receipt bound to the active freeze and AnalysisLock.
-- final PASS consumes `FINAL_AUDIT_EVIDENCE` for mechanically knowable audit dimensions.
-
-## Per-paper immutable Drive state
-
-Mutable orchestration projections remain in the canonical state root. Each paper may also have a unique child folder containing write-once lifecycle artifacts such as dataset/power receipts, freeze, AnalysisLock, analysis receipt and final-audit evidence.
-
-Different bytes cannot replace an existing immutable artifact in place.
+Receipts are paper-scoped.
 
 ## Data rule — lake first
 
@@ -113,27 +115,31 @@ Do not reacquire data already held adequately. Materialize the smallest useful p
 
 ## Freeze and analysis autonomy
 
+Each paper has its own independent freeze/analysis sequence:
+
 ```text
 PRE_FREEZE PASS
   -> CREATE_FREEZE
-  -> persist freeze.json
+  -> persist state/<paper_id>/freeze.json
   -> create AnalysisLock
-  -> persist analysis_lock.json
-  -> dispatch analysis.yml
+  -> persist state/<paper_id>/analysis_lock.json
+  -> dispatch analysis workflow for that paper
   -> ANALYZING
-  -> wait for analysis_receipt.json
+  -> verified analysis receipt
   -> RESULTS_COMPLETE
 ```
 
-If freeze creation, lock creation or workflow dispatch fails, the paper does not advance past the last verified state.
+Paper A may be frozen while Paper B remains in data feasibility.
 
 ## Humanizer boundary
 
 Humanizer is mandatory for manuscript drafting/revision/final polish but controls expression only. It must not independently change scientific meaning, methods, design, numbers, result tokens, citations, evidence support, claim strength, limitations or frozen scientific state.
 
-## Security boundary
+## GitHub / Drive boundary
 
-The Drive-credential-bearing research cycle has `contents: read` and `actions: write` only to dispatch the confirmatory analysis workflow; it does not push scientific state or heartbeat commits to the public repository.
+GitHub contains code, tests, workflows, role contracts, skills and registry/schema logic. Google Drive contains canonical `paper_registry.json`, paper-specific state, Director state, immutable research artifacts, results and manuscripts.
+
+Scientific workflows must be explicitly paper-scoped and must not write another paper's state as a side effect.
 
 ## Install and test
 
@@ -142,14 +148,12 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-The v4.6.1 tree currently collects **359 tests**. The suite covers package integrity, one-paper governance, explicit owner withdrawal, role/skill routing, freeze/AnalysisLock/provenance contracts, and adversarial integrity gates.
+The V4.7.0 tree currently collects **393 tests**. The suite covers package integrity, paper-local lifecycle compatibility, multi-paper concurrency/isolation, Director routing, explicit owner withdrawal, freeze/AnalysisLock/provenance contracts, and adversarial integrity gates.
 
 ## ChatGPT operation
 
-Use one ChatGPT Project named **Management Science CoScientist**. GitHub/Drive remain authoritative over chat memory. In every new chat, read `AGENTS.md`, `docs/CHATGPT_START_HERE.md`, `single_paper.json`, and `director.json`, then load the role contract and exact skills named by the pending action's execution profile.
-
-An explicit owner request to change topic should invoke `USER_WITHDRAWN`; do not falsely claim the old topic has a genuine blocker and do not tell the owner they are forced to continue it.
+In every new research-operating chat, read `AGENTS.md`, `docs/CHATGPT_START_HERE.md`, and Drive `state/paper_registry.json`. Select the explicit `paper_id` requested by the user, then read only that paper's state/Director inputs and preserve all other paper state unchanged.
 
 ## Scope
 
-The current engine is optimized for reproducible secondary/open-data quantitative Management Science research: archival, panel, quasi-experimental, event-study and related designs. Future study-type adapters may extend that scope without weakening the one-active-paper rule or the judgment-vs-enforcement boundary.
+The engine is optimized for reproducible secondary/open-data quantitative Management Science research: archival, panel, quasi-experimental, event-study and related designs. Multiple papers may use different designs and be at different lifecycle stages concurrently without weakening paper-level outcome locks or the judgment-vs-enforcement boundary.
