@@ -1,65 +1,90 @@
-# CoScientist V4.6.1 — agent and reasoning contract
+# CoScientist V4.7.0 — multi-paper agent and reasoning contract
 
 Read this before changing or operating the Management Science CoScientist. This is the active constitution for Codex, Claude, ChatGPT and any other reasoning or repair plane.
 
 ## Mission
 
-CoScientist develops **one Management Science paper at a time** from focused topic admission through literature, theory, data, design, confirmatory analysis, manuscript, audit and submission readiness.
+CoScientist may develop **multiple independent Management Science papers concurrently** from focused topic admission through literature, theory, data, design, confirmatory analysis, manuscript, audit and submission readiness.
 
-It does **not** run parallel active papers or a permanent candidate tournament. Once a topic is admitted, broad discovery stops until that paper is submission-ready, scientifically retired, or the owner explicitly withdraws it.
+Parallel papers are permitted. What is forbidden is **state contamination between papers**: one paper's Director action, freeze, AnalysisLock, data, results, manuscript or audit evidence must never silently drive another paper.
 
-Historical candidate IDs, rankings, novelty scores, court outcomes and continuation handoffs are archival evidence only. They are not active inputs to selection, ranking, rejection, continuation, or source choice.
+Historical candidate IDs, rankings, novelty scores and old handoffs are archival evidence only unless explicitly attached to the same paper.
 
-## One-paper rule
+## Multi-paper operating model
 
-The canonical active scientific state is `single_paper.json` in the V4 Google Drive state folder. Exactly one paper may be active.
+The canonical root index is `state/paper_registry.json` in the V4 Google Drive state folder.
 
-The one-paper rule prevents **parallel active papers**. It does **not** remove the owner's right to change research priorities.
+Each paper owns a separate state namespace:
 
-Broad discovery is allowed when:
-- no paper is active;
-- the current paper is `SUBMISSION_READY`;
-- the paper is `RETIRED` for an enumerated genuine scientific blocker; or
-- the owner has explicitly placed it in `USER_WITHDRAWN`.
+```text
+state/<paper_id>/paper_state.json
+state/<paper_id>/director.json
+state/<paper_id>/director_answer.json
+state/<paper_id>/director_action.json
+state/<paper_id>/receipts/
+state/<paper_id>/...paper artifacts...
+```
 
-### Owner withdrawal
+`paper_registry.json` may contain a `focus_paper_id` for UI/default routing. **Focus is not exclusivity.** Any number of registered papers may be ACTIVE, REPAIR or PAUSED at the same time.
 
-An explicit owner instruction such as "stop this topic", "I do not want to continue this paper", or "switch to X instead" authorizes deterministic owner withdrawal.
+The legacy `SinglePaperState` class remains the paper-local lifecycle engine for backward compatibility. Its historical name means "one charter per paper-state file", not "one paper for the whole CoScientist".
 
-Owner withdrawal:
-- may occur at any non-terminal stage;
-- is a human preference/priority/strategy decision, **not** a scientific failure;
-- must use the dedicated withdrawal route and must never be falsely encoded as a genuine blocker;
-- clears the old pending Director action through reconciliation;
-- releases the one-paper lock;
-- may carry an explicit `owner_next_topic_direction` into the next discovery action;
-- does not authorize running two papers at once.
+Legacy root files `state/single_paper.json`, `state/director.json` and `state/director_answer.json` are compatibility artifacts. New work must use the registry and paper-scoped paths.
 
-A model must never infer withdrawal merely from null results, a failed model, a difficult repair, or apparent loss of interest. The owner must explicitly direct it.
+## Paper-local lifecycle rule
 
-When the owner names the next topic, the next discovery action should evaluate and refine that direction rather than silently substituting an unrelated topic. The system may reject or reshape it only for real scientific/data/identification reasons.
+Each paper independently progresses through:
+
+`SELECTED -> DEVELOPING -> DATA_FEASIBLE -> DESIGN_READY -> FROZEN -> ANALYZING -> RESULTS_COMPLETE -> MANUSCRIPT -> FINAL_AUDIT -> SUBMISSION_READY`
+
+A paper may also become `RETIRED` for a genuine scientific blocker or `USER_WITHDRAWN` by explicit owner choice.
+
+Lifecycle monotonicity is paper-local. Advancing, pausing, withdrawing or repairing one paper must not alter any other paper.
 
 ## Research Director rule
 
-`director.json` is the canonical orchestration record. It may contain **one pending research action**. `director_answer.json` is the single overwriteable reasoning-plane inbox. Never create an alternate Director state, second answer inbox, parallel work queue, or paper-specific candidate queue.
+There is **one pending Director action per paper**, not one pending action for the whole CoScientist.
 
-The V4.6.1 operating facade is `src/coscientist/director_v461.py`. It preserves V4.6 integrity receipts and adds owner-directed withdrawal/discovery routing.
+For paper `<paper_id>`:
+- `state/<paper_id>/director.json` is the canonical orchestration record;
+- `state/<paper_id>/director_answer.json` is that paper's overwriteable reasoning-plane inbox;
+- `state/<paper_id>/director_action.json` is the current action projection when emitted.
+
+Use `src/coscientist/director_multi.py` to route the mature Director facade to a selected paper.
 
 When operating as a reasoning plane:
-1. read current `single_paper.json` and `director.json`;
-2. identify exact `action_id` and `execution_profile`;
-3. load required role contract and skills;
-4. answer only that action;
-5. use current literature/web evidence and the current GMS lake as required;
-6. return one structured `director_answer.json` with `execution_role` and `skills_used`;
-7. do not mutate lifecycle stage by hand;
-8. do not answer stale actions after the Director has moved on.
+1. read `paper_registry.json`;
+2. select the explicit `paper_id` (or use `focus_paper_id` only when the user has not specified one);
+3. read that paper's `paper_state.json` and `director.json`;
+4. identify exact `action_id` and `execution_profile`;
+5. load required role contract and skills;
+6. answer only that paper/action;
+7. return only through that paper's `director_answer.json`;
+8. do not mutate lifecycle stage by hand;
+9. do not answer stale actions;
+10. do not touch another paper's state as a side effect.
 
-The deterministic Director validates answers before state advances.
+The deterministic Director validates answers before that paper advances.
+
+## Adding and working on papers
+
+A new paper may be created while other papers are active. Admission does not require withdrawal, retirement or completion of another paper.
+
+The owner may work on Paper A, switch focus to Paper B, and later return to Paper A without terminating either.
+
+Broad discovery may run for a new paper when explicitly requested. Discovery for Paper B does not reopen, rewrite or replace the charter of Paper A.
+
+## Owner withdrawal
+
+Explicit owner withdrawal is paper-local.
+
+An instruction such as "stop paper X" places only that paper in `USER_WITHDRAWN`. It does not release or acquire a global lock because no global paper lock exists.
+
+Never infer withdrawal merely from null results, a failed model, difficult repair or temporary lack of attention.
 
 ## Reasoning roles
 
-There are only two LLM execution roles plus the deterministic Director.
+There are two LLM execution roles plus the deterministic Director.
 
 ### Scientific Reasoning
 Contract: `agents/scientific_reasoning/AGENT.md`.
@@ -69,10 +94,10 @@ Use for literature/theory, data-feasibility reasoning, design closure, manuscrip
 Contract: `agents/independent_audit/AGENT.md`.
 Use for `PRE_FREEZE_AUDIT` and `FINAL_AUDIT`. These require a genuinely fresh reasoning context and `fresh_context_attested: true`.
 
-The audit role is read-only toward canonical scientific state. It returns findings through the Director.
+The audit role is read-only toward the selected paper's canonical scientific state.
 
 ### Deterministic actions
-`CREATE_FREEZE`, `RUN_ANALYSIS`, and explicit owner withdrawal are deterministic control actions. Do not fabricate LLM scientific judgments for them.
+`CREATE_FREEZE`, `RUN_ANALYSIS`, explicit owner withdrawal and registry/state migration are deterministic control actions. Do not fabricate LLM scientific judgments for them.
 
 ## Skill rule
 
@@ -85,11 +110,11 @@ Skills are reusable expert procedures, not autonomous actors:
 - `skills/citation_integrity/SKILL.md` — CitationIntegrity v1.0;
 - `skills/final_audit_reasoner/SKILL.md` — FinalAuditReasoner v1.0.
 
-Do not create a swarm of permanent Literature/Data/Statistics/Journal/Figure agents merely because those tasks exist.
+Do not create a permanent swarm merely because multiple papers exist. Concurrency is a state/routing capability, not a requirement to spawn one autonomous agent per paper.
 
 ## Genuine blockers
 
-Scientific retirement is permitted only for:
+Scientific retirement of a selected paper is permitted only for:
 - direct scoop with no defensible residual contribution;
 - essential-data or essential-measurement impossibility after repair routes are exhausted;
 - identification impossibility for the intended core claim;
@@ -97,23 +122,21 @@ Scientific retirement is permitted only for:
 - legal or ethical impossibility;
 - fundamental construct failure.
 
-API outages, transfer errors, a missing optional control, one failed model, non-significance, a nearby paper, a failed workflow, or an arbitrary novelty score are repair problems, not retirement grounds.
-
-**Owner withdrawal is separate from this list.** The owner does not need to manufacture a scientific blocker to stop a topic.
+API outages, transfer errors, missing optional controls, one failed model, non-significance or a failed workflow are repair problems for that paper, not retirement grounds.
 
 ## Evolve first
 
-If the owner still wants the paper, pre-freeze evolution has no arbitrary count budget. Improve measurement, data, mechanism, identification, sample, or design as needed. A substantive evolution re-runs the checks it invalidates.
+If the owner still wants a paper, pre-freeze evolution has no arbitrary count budget. Improve measurement, data, mechanism, identification, sample or design as needed. A substantive evolution re-runs the checks it invalidates.
 
-Below the outcome lock, scientific state is immutable. A post-freeze design change cannot silently rewrite a confirmatory claim.
+Below that paper's outcome lock, its scientific state is immutable for confirmatory claims. Locks are independent across papers.
 
 ## Bounded novelty checks
 
-There is no numeric novelty score that mechanically kills a paper. Novelty is a scientific judgment about residual contribution. Use bounded closures at admission, before freeze, and immediately before submission.
+There is no numeric novelty score that mechanically kills a paper. Novelty is a scientific judgment about residual contribution. Use bounded closures at admission, before freeze and immediately before submission.
 
 ## Data order — lake first
 
-The Global Management Science data lake owns ingestion. CoScientist owns scientific selection. For every required construct use:
+The Global Management Science data lake owns ingestion. Each paper owns scientific selection. For every required construct use:
 
 ```text
 03_RESEARCH mart
@@ -124,33 +147,35 @@ The Global Management Science data lake owns ingestion. CoScientist owns scienti
     -> genuine essential-data blocker
 ```
 
-Do not reacquire data already held adequately. External retrieval fills a defined gap. Large/query-native data should be reduced to the smallest useful paper-specific extract and that extract should be frozen.
+Do not reacquire data already held adequately. Paper-specific extracts must be stored under that paper's artifact namespace and frozen by hash.
 
 ## Freeze only after feasibility
 
-Before freeze establish outcome-blind source access/licence, schema, joins, granularity, coverage, sample construction, treatment/support variation, essential-variable availability, realistic missingness/attrition, pre-period noise/dependence, plausible power/MDE, and exact dataset SHA-256 identities.
+For each paper, before freeze establish outcome-blind source access/licence, schema, joins, granularity, coverage, sample construction, treatment/support variation, essential-variable availability, realistic missingness/attrition, pre-period noise/dependence, plausible power/MDE and exact dataset SHA-256 identities.
 
-Then perform one consolidated hostile pre-freeze review. A `CREATE_FREEZE` action requires the real mechanical `FreezeManifest`; only then may lifecycle become `FROZEN`.
+Then perform that paper's consolidated hostile pre-freeze review. A `CREATE_FREEZE` action requires its real mechanical `FreezeManifest`.
 
 ## Outcome and analysis locks
 
-The design freeze fixes scientific design. The AnalysisLock fixes code, environment and execution plan before confirmatory outcome access. Both remain one-way doors for confirmatory claims.
+Every paper has its own design freeze and AnalysisLock. Paper A may be frozen while Paper B remains in data feasibility. Outcome access for one paper does not unlock or freeze another.
 
 ## Integrity receipts
 
-Mechanically knowable facts come from deterministic evidence, not LLM assertions. V4.6+ uses write-once receipts for dataset identity, deterministic power, analysis completion and final-audit mechanical evidence.
+Mechanically knowable facts come from deterministic evidence, not LLM assertions. Receipts are paper-scoped and must name the paper ID and the exact artifact identities they certify.
 
 ## Manuscript integrity
 
-The results bridge is authoritative for empirical numbers. Confirmatory prose uses strict result-token provenance. Final submission readiness requires every mandated final-audit check to pass.
+Each paper's results bridge is authoritative for its empirical numbers. Never copy result tokens between papers unless an explicit cross-paper synthesis design requires and records that linkage.
 
 ## Humanizer manuscript-style rule
 
-Humanizer controls **expression only**. It may improve naturalness, directness, rhythm, diction, paragraph architecture and rhetorical restraint, but it must not independently change scientific meaning, methods, numbers, result tokens, citations, evidence support, claim strength, limitations, or frozen design.
+Humanizer controls expression only. It may improve naturalness, directness, rhythm, diction, paragraph architecture and rhetorical restraint, but it must not independently change scientific meaning, methods, numbers, result tokens, citations, evidence support, claim strength, limitations or frozen design.
 
 ## GitHub / Drive boundary
 
-GitHub contains code, tests, workflows, role contracts, skills and registries. Google Drive contains scientific state, Director state, frozen identities, research outputs and manuscripts. Workflows must never commit unsubmitted scientific state/results to Git.
+GitHub contains code, tests, workflows, role contracts, skills and registries/schema logic. Google Drive contains canonical paper registry/state, Director state, frozen identities, research outputs and manuscripts.
+
+Workflows must be explicitly paper-scoped and must never commit unsubmitted scientific state/results to Git.
 
 ## Engineering rule
 
@@ -158,9 +183,9 @@ Every deterministic guarantee claimed by the system belongs in a `GUARANTEES*.ya
 
 ## Canonical documentation
 
-- `docs/SINGLE_PAPER_RESEARCH_HANDBOOK.md`
-- `docs/REASONING_LAYER.md`
+- `docs/MULTI_PAPER_RESEARCH_HANDBOOK.md`
 - `docs/CHATGPT_START_HERE.md`
+- `docs/REASONING_LAYER.md`
 - `docs/HUMANIZER_INTEGRATION.md`
 
-If older candidate/court/handoff documentation conflicts with this contract, the current V4.6.1 constitution wins.
+If older single-paper documentation conflicts with this contract, this V4.7.0 constitution wins.
