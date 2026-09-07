@@ -63,8 +63,17 @@ jobs:
             > "$RUNNER_TEMP/r-analysis-smoke.txt" 2>&1
           echo "R_ANALYSIS_ADAPTER=PASS"
 
+          set +e
           nextflow -ansi-log false run research_executor/analysis_adapter_smoke.nf \
             > "$RUNNER_TEMP/nextflow-analysis-smoke.txt" 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "NEXTFLOW_ANALYSIS_ADAPTER=FAILED"
+            cat "$RUNNER_TEMP/nextflow-analysis-smoke.txt"
+            exit "$rc"
+          fi
+          cat "$RUNNER_TEMP/nextflow-analysis-smoke.txt"
           echo "NEXTFLOW_ANALYSIS_ADAPTER=PASS"
 
       - name: Run full executor tests including deterministic analysis
@@ -92,6 +101,7 @@ jobs:
           set -e
           if [ "$rc" -ne 0 ]; then
             echo "DETERMINISTIC_ANALYSIS=FAILED job_id=$COSCI_JOB_ID"
+            cat "$RUNNER_TEMP/analysis-private-cli.log"
             exit "$rc"
           fi
           echo "DETERMINISTIC_ANALYSIS=PASS job_id=$COSCI_JOB_ID"
