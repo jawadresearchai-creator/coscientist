@@ -1,0 +1,187 @@
+{
+  "schema_version": "cosci.methodology-registry/1.0",
+  "policy": {
+    "zero_cost_only": true,
+    "automatic_paid_routes": false,
+    "private_direction_only": true,
+    "human_approval_before_execution": true,
+    "confirmatory_preregistration_required": true,
+    "exploratory_must_be_labeled": true,
+    "reproducibility_required": true,
+    "raw_inputs_immutable": true,
+    "typed_handoffs_required": true,
+    "checkpoint_required": true,
+    "final_scientific_judgment_reserved_for_research_director": true
+  },
+  "methodology_gates": [
+    {
+      "id": "FRAME_QUESTION",
+      "donor": "science-superpowers",
+      "skill": "framing-research-questions",
+      "required": true,
+      "output": "QUESTION_PACKET"
+    },
+    {
+      "id": "SURVEY_PRIOR_WORK",
+      "donor": "science-superpowers+ai4s",
+      "skill": "surveying-prior-work+literature-survey",
+      "required": true,
+      "output": "EVIDENCE_HANDOFF"
+    },
+    {
+      "id": "ASSESS_FEASIBILITY",
+      "donor": "science-superpowers",
+      "skill": "establishing-feasibility-first",
+      "required": true,
+      "output": "FEASIBILITY_PACKET"
+    },
+    {
+      "id": "DESIGN_STUDY",
+      "donor": "science-superpowers+ai4s",
+      "skill": "designing-the-analysis+experiment-suite",
+      "required": true,
+      "output": "STUDY_DESIGN_PACKET"
+    },
+    {
+      "id": "HUMAN_APPROVAL_DESIGN",
+      "donor": "Research CoScientist policy",
+      "skill": "research-director-approval",
+      "required": true,
+      "output": "APPROVAL_DECISION"
+    },
+    {
+      "id": "PREREGISTER_CONFIRMATORY",
+      "donor": "science-superpowers",
+      "skill": "preregistering-analysis",
+      "required_for_modes": ["CONFIRMATORY", "MIXED"],
+      "output": "FROZEN_PREREGISTRATION"
+    },
+    {
+      "id": "SETUP_REPRODUCIBILITY",
+      "donor": "science-superpowers",
+      "skill": "setting-up-reproducible-analysis",
+      "required": true,
+      "output": "REPRODUCIBILITY_CONTRACT"
+    },
+    {
+      "id": "SELECT_SKILLS_TOOLS",
+      "donor": "ai4s+k-dense+ToolUniverse",
+      "skill": "skill-tool-broker",
+      "required": true,
+      "output": "CAPABILITY_PLAN"
+    },
+    {
+      "id": "EXECUTE_REGISTERED_PLAN",
+      "donor": "science-superpowers",
+      "skill": "executing-analysis|subagent-driven-analysis",
+      "required": true,
+      "blocked_until": ["HUMAN_APPROVAL_DESIGN", "SETUP_REPRODUCIBILITY"],
+      "output": "ANALYSIS_HANDOFF"
+    },
+    {
+      "id": "ANOMALY_GATE",
+      "donor": "science-superpowers",
+      "skill": "investigating-anomalous-results",
+      "required_on_anomaly": true,
+      "output": "ANOMALY_DECISION"
+    },
+    {
+      "id": "VERIFY_BEFORE_CLAIM",
+      "donor": "science-superpowers",
+      "skill": "verifying-results-before-claiming",
+      "required": true,
+      "output": "VERIFICATION_PACKET"
+    },
+    {
+      "id": "RED_TEAM",
+      "donor": "science-superpowers+ResearchTown",
+      "skill": "requesting-red-team-review",
+      "required": true,
+      "output": "REVIEW_HANDOFF"
+    },
+    {
+      "id": "ARCHIVE_REPORT",
+      "donor": "science-superpowers",
+      "skill": "reporting-and-archiving-findings",
+      "required": true,
+      "output": "ARCHIVE_HANDOFF"
+    }
+  ],
+  "skill_sources": [
+    {
+      "id": "science-superpowers",
+      "role": "methodology_discipline",
+      "selection": "mandatory methodology gates",
+      "license_route": "public repository",
+      "cost_class": "ZERO_COST"
+    },
+    {
+      "id": "ai4s-skills",
+      "role": "research_skill_architecture",
+      "selection": "typed modular handoffs by capability",
+      "skills": ["research-explorer", "literature-survey", "experiment-suite", "paper-writer", "integrity-auditor"],
+      "cost_class": "ZERO_COST"
+    },
+    {
+      "id": "k-dense-scientific-agent-skills",
+      "role": "specialized_scientific_skill_library",
+      "selection": "selective discovery by capability tags; never wholesale activation",
+      "cost_class": "ZERO_COST_REPOSITORY_SKILLS"
+    },
+    {
+      "id": "tooluniverse",
+      "role": "scientific_tool_broker",
+      "package": "tooluniverse",
+      "validated_target_version": "1.4.1",
+      "selection": "registry discovery first; credential/cost policy evaluated before execution",
+      "cost_class": "ZERO_COST_CORE_WITH_TOOL_SPECIFIC_POLICY"
+    }
+  ],
+  "capability_taxonomy": [
+    "QUESTION_FRAMING",
+    "LITERATURE_EVIDENCE",
+    "FEASIBILITY",
+    "STUDY_DESIGN",
+    "PREREGISTRATION",
+    "REPRODUCIBILITY",
+    "DATA_DISCOVERY",
+    "DATA_ACQUISITION",
+    "STATISTICAL_ANALYSIS",
+    "BIOINFORMATICS",
+    "TRANSCRIPTOMICS",
+    "TIME_SERIES",
+    "GEOSPATIAL",
+    "CHEMINFORMATICS",
+    "IMAGE_ANALYSIS",
+    "FIGURE_GENERATION",
+    "INTEGRITY_AUDIT",
+    "PUBLICATION_HANDOFF"
+  ],
+  "handoff_types": [
+    "QUESTION_PACKET",
+    "EVIDENCE_HANDOFF",
+    "FEASIBILITY_PACKET",
+    "STUDY_DESIGN_PACKET",
+    "APPROVAL_DECISION",
+    "FROZEN_PREREGISTRATION",
+    "REPRODUCIBILITY_CONTRACT",
+    "CAPABILITY_PLAN",
+    "DATA_ACQUISITION_HANDOFF",
+    "ANALYSIS_HANDOFF",
+    "VERIFICATION_PACKET",
+    "REVIEW_HANDOFF",
+    "ARCHIVE_HANDOFF"
+  ],
+  "tooluniverse_adapter": {
+    "package": "tooluniverse",
+    "validated_target_version": "1.4.1",
+    "load_contract": [
+      "from tooluniverse import ToolUniverse",
+      "tu = ToolUniverse()",
+      "tu.load_tools()",
+      "tu.list_built_in_tools(mode='list_name')"
+    ],
+    "paid_tool_policy": "never auto-run a tool whose execution requires paid service or paid compute",
+    "credential_policy": "free/keyless first; optional free credentials allowed; missing credential causes skip/fallback, not paid escalation"
+  }
+}
