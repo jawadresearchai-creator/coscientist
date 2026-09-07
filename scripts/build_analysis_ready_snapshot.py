@@ -25,6 +25,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+# Ensure repo root and src are on path
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT))
+
 from coscientist.drive import DriveClient, DriveCredentials, FOLDER_MIME, API
 
 SNAPSHOT_NAME = "analysis_ready_data_v2_20260907"
@@ -54,7 +59,6 @@ def prepare_staging_v2() -> None:
     STAGING_V2.mkdir(parents=True, exist_ok=True)
     print(f"Preparing staging directory: {STAGING_V2}...", flush=True)
     
-    # Copy all base files from v1 that do not need changes
     base_files = [
         "candidate_firm_universe.csv",
         "universe_construction_receipt.json",
@@ -83,15 +87,13 @@ def prepare_staging_v2() -> None:
         if src.exists() and not dst.exists():
             shutil.copy2(src, dst)
             
-    print(f"Copied {len(base_files)} baseline assets to staging v2.", flush=True)
+    print(f"Copied baseline assets to staging v2.", flush=True)
 
 
 def package_sec_corpus_zip_and_manifest() -> None:
     filings_dir = STAGING_V1 / "sec_pre_event_filings_full"
     zip_dest = STAGING_V2 / "sec_pre_event_filings_full.zip"
     manifest_dest = STAGING_V2 / "sec_corpus_manifest_full.csv"
-    
-    print(f"Packaging {zip_dest} from {filings_dir}...", flush=True)
     
     filing_index = {}
     with open(STAGING_V2 / "pre_event_filing_index.csv", encoding="utf-8") as f:
@@ -101,9 +103,18 @@ def package_sec_corpus_zip_and_manifest() -> None:
     manifest_rows = []
     files = sorted([f for f in filings_dir.iterdir() if f.name.endswith(".json")])
     
-    with zipfile.ZipFile(zip_dest, "w", zipfile.ZIP_DEFLATED) as z:
+    need_zip = not (zip_dest.exists() and zip_dest.stat().st_size > 100_000_000)
+    if need_zip:
+        print(f"Packaging {zip_dest} from {filings_dir}...", flush=True)
+        z_ctx = zipfile.ZipFile(zip_dest, "w", zipfile.ZIP_DEFLATED)
+    else:
+        print(f"Found existing valid {zip_dest} ({zip_dest.stat().st_size:,} bytes), reading files for manifest...", flush=True)
+        z_ctx = None
+
+    try:
         for fp in files:
-            z.write(fp, arcname=f"sec_pre_event_filings_full/{fp.name}")
+            if z_ctx is not None:
+                z_ctx.write(fp, arcname=f"sec_pre_event_filings_full/{fp.name}")
             with open(fp, "r", encoding="utf-8") as fh:
                 d = json.load(fh)
                 
@@ -133,6 +144,9 @@ def package_sec_corpus_zip_and_manifest() -> None:
                 "json_sha256": sha256_file(fp),
                 "missing_reason": d.get("missing_reason", "NONE")
             })
+    finally:
+        if z_ctx is not None:
+            z_ctx.close()
             
     existing_tickers = {r["ticker"] for r in manifest_rows}
     for tk, r in filing_index.items():
@@ -172,9 +186,50 @@ def package_sec_corpus_zip_and_manifest() -> None:
     print(f"Wrote {manifest_dest} ({len(manifest_rows)} rows) and {zip_dest} ({zip_dest.stat().st_size:,} bytes)", flush=True)
 
 
+def build_availability_matrix(df_controls: Any, staging_path: Path) -> None:
+    matrix_rows = []
+    for _, r in df_controls.iterrows():
+        tk = r["ticker"]
+        matrix_rows.append({
+            "ticker": tk,
+            "cik": r["cik"],
+            "has_pre_event_filing": bool(r.get("pre_event_form")),
+            "pre_event_form": r.get("pre_event_form", ""),
+            "has_pre_event_price": bool(r.get("pre_event_price_used")),
+            "has_120_pre_event_obs": bool(r.get("has_120_pre_event_obs")),
+            "has_200_pre_event_obs": bool(r.get("has_200_pre_event_obs")),
+            "has_250_pre_event_obs": bool(r.get("has_250_pre_event_obs")),
+            "has_market_cap": bool(r.get("has_market_cap")),
+            "has_profitability": bool(r.get("has_profitability")),
+            "roa_period_consistent": bool(r.get("roa_period_consistent")),
+            "has_leverage": bool(r.get("has_leverage")),
+            "leverage_period_consistent": bool(r.get("leverage_period_consistent")),
+            "has_intangible_assets": bool(r.get("has_intangible_assets")),
+            "intangibles_period_consistent": bool(r.get("intangibles_period_consistent")),
+            "has_rd_proxy": bool(r.get("has_rd_proxy")),
+            "has_rd_to_revenue": bool(r.get("has_rd_to_revenue")),
+            "rd_period_consistent": bool(r.get("rd_period_consistent")),
+            "has_sic": bool(r.get("has_sic")),
+            "has_market_beta_120": bool(r.get("has_market_beta_120")),
+            "has_market_beta_200": bool(r.get("has_market_beta_200")),
+            "has_market_beta_250": bool(r.get("has_market_beta_250")),
+            "cross_accession_fallback": bool(r.get("cross_accession_fallback")),
+            "analysis_ready_baseline": bool(
+                r.get("has_pre_event_filing") and 
+                r.get("has_120_pre_event_obs") and 
+                r.get("has_market_cap") and 
+                r.get("has_sic")
+            )
+        })
+    import pandas as pd
+    df_matrix = pd.DataFrame(matrix_rows)
+    matrix_csv = staging_path / "analysis_data_availability_matrix.csv"
+    df_matrix.to_csv(matrix_csv, index=False)
+    print(f"Wrote analysis availability matrix ({len(df_matrix)} rows) to {matrix_csv}")
+
+
 def build_controls_and_provenance() -> None:
     from coscientist.eventstudy_controls import materialize_pre_event_controls, CUTOFF_DATE
-    from scripts.materialize_eventstudy_controls import build_availability_matrix
     
     print(f"Materializing pre-event controls with strict cutoff <= {CUTOFF_DATE}...", flush=True)
     df_controls, df_prov, df_shares_audit, cutoff_summary = materialize_pre_event_controls(
@@ -380,7 +435,6 @@ def upload_and_verify_drive(manifest: Dict[str, Any]) -> Tuple[str, str, Dict[st
                 print(f"Drive API call failed ({attempt}/{max_retries}): {e}. Retrying in {delay}s...", flush=True)
                 time.sleep(delay)
 
-    # Check study folder
     study_children = with_retry(lambda: client.list_folder(STUDY_FOLDER_ID))
     existing_snapshots = [f for f in study_children if f["name"] == SNAPSHOT_NAME]
     
@@ -412,7 +466,6 @@ def upload_and_verify_drive(manifest: Dict[str, Any]) -> Tuple[str, str, Dict[st
         print(f"  Uploaded {fname} ({sz:,} bytes) in {time.time()-t0:.1f}s -> {fid}", flush=True)
         upload_receipts.append({"name": fname, "id": fid, "bytes": sz, "sha256": local_hash, "status": "UPLOADED"})
 
-    # Remote Round-Trip Verification
     print("\n--- Performing Remote Round-Trip Cryptographic Verification ---", flush=True)
     verify_temp_dir = Path("state/temp_drive_verification_v2")
     verify_temp_dir.mkdir(parents=True, exist_ok=True)
