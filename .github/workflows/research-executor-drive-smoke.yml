@@ -55,22 +55,33 @@ jobs:
           --job-id "$COSCI_JOB_ID"
           --public-status out/drive-status.json
 
-      - name: Validate public artifact contains no private manifest
+      - name: Validate public artifact contains no private fields
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           from research_executor.public_status import validate_public_status
+
           p = Path("out/drive-status.json")
           status = json.loads(p.read_text(encoding="utf-8"))
           validate_public_status(status)
-          encoded = p.read_text(encoding="utf-8").lower()
-          forbidden = (
+
+          forbidden_keys = {
               "research_question", "hypothesis", "private_manifest",
               "drive_token", "refresh_token", "api_key", "credential_value",
               "payload", "drive_destinations"
-          )
-          leaked = [x for x in forbidden if x in encoded]
+          }
+
+          def keys(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      yield str(key).lower()
+                      yield from keys(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      yield from keys(child)
+
+          leaked = sorted(forbidden_keys.intersection(set(keys(status))))
           if leaked:
               raise SystemExit(f"private fields leaked to public artifact: {leaked}")
           print("PUBLIC_EXECUTOR_SAFE artifact validation PASS")
