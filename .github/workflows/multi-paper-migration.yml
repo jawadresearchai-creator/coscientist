@@ -1,0 +1,78 @@
+name: CoScientist Multi-Paper V4.7 Migration
+
+on:
+  push:
+    branches:
+      - multi-paper-director-migration
+    paths:
+      - "src/coscientist/multi_paper.py"
+      - "src/coscientist/director_multi.py"
+      - "scripts/migrate_drive_multi_paper.py"
+      - "tests/test_multi_paper.py"
+      - "AGENTS.md"
+      - "docs/CHATGPT_START_HERE.md"
+      - "docs/MULTI_PAPER_RESEARCH_HANDBOOK.md"
+      - "GUARANTEES_MULTI_PAPER.yaml"
+      - "GUARANTEES_SINGLE_PAPER.yaml"
+      - ".github/workflows/multi-paper-migration.yml"
+      - "ops/migrations/apply_multi_paper_v47.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coscientist-multi-paper-v47-migration
+  cancel-in-progress: false
+
+jobs:
+  test-multi-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Run multi-paper and compatibility tests
+        run: >-
+          pytest
+          tests/test_multi_paper.py
+          tests/test_single_paper.py
+          tests/test_owner_withdrawal.py
+          tests/test_director.py
+          tests/test_integrity.py
+          -v
+
+  migrate-drive:
+    needs: test-multi-paper
+    if: ${{ contains(github.event.head_commit.message, '[apply-multi-paper-migration]') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+      COSCI_STATE_ROOT_ID: "1IFnkKcsw0-vtfzKXzoSfdFeB44bl7AZZ"
+      ASTRA_STUDY_FOLDER_ID: "1yx34Mj-k7SsGSuPli8UVuR_E639eeLcb"
+      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+      - name: Apply non-destructive Drive migration
+        run: |
+          mkdir -p out
+          python scripts/migrate_drive_multi_paper.py | tee out/multi-paper-migration.json
+      - name: Upload public-safe migration execution log
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-paper-v47-migration-log
+          path: out/multi-paper-migration.json
+          if-no-files-found: error
+          retention-days: 14
