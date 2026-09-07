@@ -14,18 +14,27 @@ on:
         type: choice
         options:
           - SMOKE_TEST
+  push:
+    branches:
+      - main
+    paths:
+      - "research_executor/**"
+      - ".github/workflows/research-executor-smoke.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: research-executor-smoke-${{ inputs.job_id }}
+  group: research-executor-smoke-${{ github.event_name == 'workflow_dispatch' && inputs.job_id || github.sha }}
   cancel-in-progress: false
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      COSCI_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.job_id || format('COSCI-SMOKE-{0}', github.run_id) }}
+      COSCI_TASK_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.task_type || 'SMOKE_TEST' }}
     steps:
       - name: Checkout public executor
         uses: actions/checkout@v4
@@ -41,14 +50,14 @@ jobs:
       - name: Validate privacy-safe dispatch
         run: >-
           python -m research_executor.validate_dispatch
-          --job-id "${{ inputs.job_id }}"
-          --task-type "${{ inputs.task_type }}"
+          --job-id "$COSCI_JOB_ID"
+          --task-type "$COSCI_TASK_TYPE"
 
       - name: Execute deterministic smoke task
         run: >-
           python -m research_executor.router
-          --job-id "${{ inputs.job_id }}"
-          --task-type "${{ inputs.task_type }}"
+          --job-id "$COSCI_JOB_ID"
+          --task-type "$COSCI_TASK_TYPE"
           --output out/status.json
 
       - name: Display sanitized status
@@ -57,7 +66,7 @@ jobs:
       - name: Upload public-safe smoke receipt
         uses: actions/upload-artifact@v4
         with:
-          name: research-executor-status-${{ inputs.job_id }}
+          name: research-executor-status-${{ env.COSCI_JOB_ID }}
           path: out/status.json
           if-no-files-found: error
           retention-days: 7
