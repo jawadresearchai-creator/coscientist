@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 JOB_ID_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{2,127}$")
-ALLOWED_TASK_TYPES = {"SMOKE_TEST", "DATA_ACQUISITION", "ANALYSIS", "LITERATURE", "METHODOLOGY"}
+ALLOWED_TASK_TYPES = {"SMOKE_TEST", "DATA_ACQUISITION", "ANALYSIS", "LITERATURE", "METHODOLOGY", "PUBLICATION"}
 PUBLIC_SCHEMA_VERSION = "cosci.public-status/1.0"
 
 
@@ -46,6 +46,8 @@ def build_public_status(job_id: str, task_type: str = "SMOKE_TEST") -> dict[str,
         checks.append({"name": "private_literature_evidence_execution", "status": "PASS"})
     elif task_type == "METHODOLOGY":
         checks.append({"name": "private_methodology_skill_planning", "status": "PASS"})
+    elif task_type == "PUBLICATION":
+        checks.append({"name": "private_reproducible_publication_build", "status": "PASS"})
     return {
         "schema_version": PUBLIC_SCHEMA_VERSION,
         "job_id": job_id,
@@ -87,9 +89,19 @@ def validate_public_status(status: dict[str, Any]) -> None:
         "drive_token", "refresh_token", "api_key", "credential_value", "literature_corpus",
         "source_url", "drive_file_id", "input_file_id", "selected_accession", "search_query",
         "claims", "doi", "pmid", "pmcid", "openalex_id", "title", "abstract",
-        "methodology_plan", "skill_plan", "tool_plan", "handoffs", "preregistration"
+        "methodology_plan", "skill_plan", "tool_plan", "handoffs", "preregistration",
+        "journal", "journal_requirements", "canonical_manuscript", "manuscript_source",
+        "citation_ledger", "figure_table_registry", "build_manifest", "author", "authors"
     }
-    present_forbidden = forbidden_keys & set(status)
+    def keys(value: Any):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                yield str(key).lower()
+                yield from keys(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from keys(child)
+    present_forbidden = forbidden_keys.intersection(set(keys(status)))
     if present_forbidden:
         raise ValueError(f"private/sensitive fields present in public status: {sorted(present_forbidden)}")
 
