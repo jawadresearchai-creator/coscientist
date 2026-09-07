@@ -75,7 +75,7 @@ jobs:
 
           overlap_doi = "10.1016/j.pbi.2014.04.009"
           cr_overlap = [r for r in search_crossref(overlap_doi, 5) if r.get("doi") == overlap_doi]
-          ep_overlap = [r for r in search_europe_pmc(overlap_doi, 5) if r.get("doi") == overlap_doi]
+          ep_overlap = [r for r in search_europe_pmc(f"DOI:{overlap_doi}", 5) if r.get("doi") == overlap_doi]
           if not cr_overlap or not ep_overlap:
               raise SystemExit("live cross-source DOI overlap probe was not resolved by both required sources")
           works, _ = deduplicate_records([cr_overlap[0], ep_overlap[0]])
