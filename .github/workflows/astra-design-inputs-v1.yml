@@ -1,0 +1,57 @@
+name: Astra Outcome-Blind Design Inputs V1
+
+on:
+  push:
+    branches:
+      - astra-data-v3-repair-v3
+    paths:
+      - "src/coscientist/astra_exposure.py"
+      - "tests/test_astra_exposure.py"
+      - "scripts/build_astra_design_inputs_v1.py"
+      - ".github/workflows/astra-design-inputs-v1.yml"
+      - "README.md"
+      - "ops/astra_design_v1_launch.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astra-design-inputs-v1
+  cancel-in-progress: false
+
+jobs:
+  test-design-inputs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]" pyarrow
+      - name: Compile design builder
+        run: python -m py_compile scripts/build_astra_design_inputs_v1.py
+      - name: Run exposure and integrity gates
+        run: pytest tests/test_astra_exposure.py tests/test_integrity.py -v
+
+  build-publish-and-close-design:
+    needs: test-design-inputs
+    if: ${{ contains(github.event.head_commit.message, '[build-astra-design-v1]') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: "1"
+      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime
+        run: python -m pip install -e ".[dev]" pyarrow
+      - name: Build and publish outcome-blind design inputs, then close design
+        run: python scripts/build_astra_design_inputs_v1.py
