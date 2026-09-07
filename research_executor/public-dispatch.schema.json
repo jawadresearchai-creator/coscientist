@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-coscientist.local/schemas/public-dispatch.schema.json",
+  "title": "ResearchCoScientistPublicDispatch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["job_id", "task_type"],
+  "properties": {
+    "job_id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]{2,127}$"},
+    "task_type": {"const": "SMOKE_TEST"}
+  }
+}

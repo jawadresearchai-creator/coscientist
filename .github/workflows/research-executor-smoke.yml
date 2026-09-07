@@ -1,0 +1,63 @@
+name: Research CoScientist Executor Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Opaque Research CoScientist job ID (no private research content)"
+        required: true
+        type: string
+      task_type:
+        description: "Public executor task selector"
+        required: true
+        default: SMOKE_TEST
+        type: choice
+        options:
+          - SMOKE_TEST
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-executor-smoke-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout public executor
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run executor unit tests
+        run: python -m unittest discover -s research_executor/tests -v
+
+      - name: Validate privacy-safe dispatch
+        run: >-
+          python -m research_executor.validate_dispatch
+          --job-id "${{ inputs.job_id }}"
+          --task-type "${{ inputs.task_type }}"
+
+      - name: Execute deterministic smoke task
+        run: >-
+          python -m research_executor.router
+          --job-id "${{ inputs.job_id }}"
+          --task-type "${{ inputs.task_type }}"
+          --output out/status.json
+
+      - name: Display sanitized status
+        run: cat out/status.json
+
+      - name: Upload public-safe smoke receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-executor-status-${{ inputs.job_id }}
+          path: out/status.json
+          if-no-files-found: error
+          retention-days: 7
