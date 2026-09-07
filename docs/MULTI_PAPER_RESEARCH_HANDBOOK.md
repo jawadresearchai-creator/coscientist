@@ -25,13 +25,24 @@ The root registry indexes papers and may nominate a focus paper. Focus is only a
 
 ## Concurrency guarantees
 
-- Multiple papers may be ACTIVE, REPAIR or PAUSED simultaneously.
+The V4.7 executable guarantee registry makes the multi-paper contract mechanically testable:
+
+- `MULTIPLE_ACTIVE_PAPERS_ALLOWED` — multiple papers can remain active concurrently.
+- `FOCUS_IS_NOT_EXCLUSIVE` — changing focus never deactivates another paper.
+- `PAPER_LIFECYCLES_ARE_ISOLATED` — lifecycle changes for one paper do not mutate another.
+- `MULTI_PAPER_REGISTRY_ROUNDTRIPS` — registry identities and paper-scoped paths persist and validate.
+- `PAPER_REGISTRY_STATUS_IS_ISOLATED` — changing registry status for one paper leaves the rest unchanged.
+
+Additional operating consequences:
+
 - Every paper has its own lifecycle stage.
 - Every paper has its own pending Director action.
 - Every paper has its own outcome/freeze/AnalysisLock boundary.
 - Every paper has its own receipt and results namespace.
 - Switching conversational focus does not withdraw another paper.
 - A workflow must receive or resolve an explicit `paper_id` before writing scientific state.
+
+The legacy compatibility guarantees `SINGLE_ACTIVE_PAPER_ONLY`, `DISCOVERY_STOPS_AFTER_ADMISSION`, `TERMINAL_PAPER_REOPENS_DISCOVERY`, and `SINGLE_PAPER_STAGE_IS_MONOTONIC` apply only inside one paper-state file. They do not impose a global one-paper limit in V4.7.
 
 ## Paper-local lifecycle
 
