@@ -64,7 +64,7 @@ jobs:
           echo "R_ANALYSIS_ADAPTER=PASS"
 
           set +e
-          nextflow -ansi-log false run research_executor/analysis_adapter_smoke.nf \
+          nextflow run research_executor/analysis_adapter_smoke.nf \
             > "$RUNNER_TEMP/nextflow-analysis-smoke.txt" 2>&1
           rc=$?
           set -e
