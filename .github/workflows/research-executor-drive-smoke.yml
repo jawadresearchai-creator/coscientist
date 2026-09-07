@@ -1,0 +1,85 @@
+name: Research CoScientist Drive Bridge Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Opaque Research CoScientist job ID only"
+        required: true
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "research_executor/drive_bridge.py"
+      - "research_executor/tests/test_drive_bridge.py"
+      - ".github/workflows/research-executor-drive-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-drive-bridge-${{ github.event_name == 'workflow_dispatch' && inputs.job_id || 'COSCI-S03-SMOKE-001' }}
+  cancel-in-progress: false
+
+jobs:
+  drive-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      COSCI_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.job_id || 'COSCI-S03-SMOKE-001' }}
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+    steps:
+      - name: Checkout public executor
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run Session 02 and Session 03 executor unit tests
+        run: >-
+          python -m unittest
+          research_executor.tests.test_executor
+          research_executor.tests.test_drive_bridge
+          -v
+
+      - name: Fetch private job and execute Drive bridge smoke
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: >-
+          python -m research_executor.drive_bridge
+          --job-id "$COSCI_JOB_ID"
+          --public-status out/drive-status.json
+
+      - name: Validate public artifact contains no private manifest
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_executor.public_status import validate_public_status
+          p = Path("out/drive-status.json")
+          status = json.loads(p.read_text(encoding="utf-8"))
+          validate_public_status(status)
+          encoded = p.read_text(encoding="utf-8").lower()
+          forbidden = (
+              "research_question", "hypothesis", "private_manifest",
+              "drive_token", "refresh_token", "api_key", "credential_value",
+              "payload", "drive_destinations"
+          )
+          leaked = [x for x in forbidden if x in encoded]
+          if leaked:
+              raise SystemExit(f"private fields leaked to public artifact: {leaked}")
+          print("PUBLIC_EXECUTOR_SAFE artifact validation PASS")
+          PY
+
+      - name: Upload public-safe Drive bridge receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-drive-bridge-status-${{ env.COSCI_JOB_ID }}
+          path: out/drive-status.json
+          if-no-files-found: error
+          retention-days: 7
