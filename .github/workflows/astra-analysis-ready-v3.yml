@@ -7,9 +7,12 @@ on:
     paths:
       - "src/coscientist/astra_v3.py"
       - "src/coscientist/eventstudy_price_metrics.py"
+      - "src/coscientist/eventstudy_fact_selection.py"
+      - "src/coscientist/eventstudy_controls.py"
       - "scripts/build_astra_analysis_ready_v3.py"
       - "scripts/run_astra_v3_hardened.py"
       - "tests/test_astra_v3.py"
+      - "tests/test_eventstudy_fact_selection.py"
       - "README.md"
       - ".github/workflows/astra-analysis-ready-v3.yml"
       - "ops/astra_v3_launch.txt"
@@ -39,6 +42,7 @@ jobs:
         run: >-
           pytest
           tests/test_astra_v3.py
+          tests/test_eventstudy_fact_selection.py
           tests/test_integrity.py
           -v
 
