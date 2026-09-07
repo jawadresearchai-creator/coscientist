@@ -1,0 +1,170 @@
+name: Research CoScientist Session 11 End-to-End Pilot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "research_executor/factorial_rnaseq.py"
+      - "research_executor/r_scripts/factorial_deseq2.R"
+      - "research_executor/tests/test_factorial_rnaseq.py"
+      - "research_executor/analysis_routes.json"
+      - ".github/workflows/research-executor-session11-pilot.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-session11-pilot
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+
+jobs:
+  validate-extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate new factorial route and existing executor contracts
+        run: |
+          set -euo pipefail
+          python -m unittest research_executor.tests.test_factorial_rnaseq -v
+          python -m unittest \
+            research_executor.tests.test_executor \
+            research_executor.tests.test_drive_bridge \
+            research_executor.tests.test_acquisition \
+            research_executor.tests.test_literature \
+            -v
+
+  literature:
+    needs: validate-extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Execute private literature evidence job
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m research_executor.literature \
+            --job-id COSCI-S11-LIT-001 \
+            --public-status out/literature-status.json
+      - name: Validate literature receipt privacy
+        run: |
+          python - <<'PY'
+          import json
+          from research_executor.public_status import validate_public_status
+          p=json.load(open('out/literature-status.json'))
+          validate_public_status(p)
+          assert p['privacy_class']=='PUBLIC_EXECUTOR_SAFE'
+          assert p['task_type']=='LITERATURE'
+          forbidden=('research_question','search_query','claims','title','abstract','doi','drive_file_id')
+          text=json.dumps(p).lower()
+          assert not any(x in text for x in forbidden)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: session11-literature-status
+          path: out/literature-status.json
+          retention-days: 7
+
+  acquisition:
+    needs: validate-extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Execute private GEO acquisition job
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m research_executor.acquisition \
+            --job-id COSCI-S11-ACQ-001 \
+            --public-status out/acquisition-status.json
+      - name: Validate acquisition receipt privacy
+        run: |
+          python - <<'PY'
+          import json
+          from research_executor.public_status import validate_public_status
+          p=json.load(open('out/acquisition-status.json'))
+          validate_public_status(p)
+          assert p['privacy_class']=='PUBLIC_EXECUTOR_SAFE'
+          assert p['task_type']=='DATA_ACQUISITION'
+          forbidden=('source_url','payload','drive_file_id','artifact_name','research_question')
+          text=json.dumps(p).lower()
+          assert not any(x in text for x in forbidden)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: session11-acquisition-status
+          path: out/acquisition-status.json
+          retention-days: 7
+
+  factorial-analysis:
+    needs: [literature, acquisition]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install zero-cost locked R analysis runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq r-base-core r-bioc-deseq2
+          Rscript --version
+          Rscript --vanilla -e 'suppressPackageStartupMessages(library(DESeq2)); cat(as.character(packageVersion("DESeq2")), "\n")'
+      - name: Re-run factorial parser tests in analysis environment
+        run: python -m unittest research_executor.tests.test_factorial_rnaseq -v
+      - name: Execute private factorial RNA-seq analysis
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python -m research_executor.factorial_rnaseq \
+            --job-id COSCI-S11-ANL-001 \
+            --public-status out/analysis-status.json
+      - name: Validate analysis receipt privacy
+        run: |
+          python - <<'PY'
+          import json
+          from research_executor.public_status import validate_public_status
+          p=json.load(open('out/analysis-status.json'))
+          validate_public_status(p)
+          assert p['privacy_class']=='PUBLIC_EXECUTOR_SAFE'
+          assert p['task_type']=='ANALYSIS'
+          forbidden=('gse163270','gsm497','counts','contrast','gene','drive_file_id','research_question')
+          text=json.dumps(p).lower()
+          assert not any(x in text for x in forbidden)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: session11-analysis-status
+          path: out/analysis-status.json
+          retention-days: 7
