@@ -58,8 +58,11 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import urllib.parse
           from research_executor.literature import (
+              _json_request,
               deduplicate_records,
+              normalize_crossref,
               search_crossref,
               search_europe_pmc,
               search_openalex,
@@ -73,15 +76,25 @@ jobs:
           print(f"CROSSREF_ROUTE=PASS count={len(cr)}")
           print(f"EUROPE_PMC_ROUTE=PASS count={len(ep)}")
 
-          overlap_doi = "10.1016/j.pbi.2014.04.009"
-          cr_overlap = [r for r in search_crossref(overlap_doi, 5) if r.get("doi") == overlap_doi]
-          ep_overlap = [r for r in search_europe_pmc(f"DOI:{overlap_doi}", 5) if r.get("doi") == overlap_doi]
-          if not cr_overlap or not ep_overlap:
-              raise SystemExit("live cross-source DOI overlap probe was not resolved by both required sources")
-          works, _ = deduplicate_records([cr_overlap[0], ep_overlap[0]])
-          if len(works) != 1 or len(works[0].get("source_records") or []) < 2:
-              raise SystemExit("live Crossref + Europe PMC duplicate did not collapse to one provenance-linked work")
-          print(f"LIVE_CROSS_SOURCE_DEDUP=PASS doi={overlap_doi} source_records={len(works[0]['source_records'])}")
+          overlap_doi = "10.1111/nph.71383"
+          params = urllib.parse.urlencode({"filter": f"doi:{overlap_doi}", "rows": 1})
+          payload = _json_request(f"https://api.crossref.org/works?{params}")
+          cr_overlap = None
+          for item in ((payload.get("message") or {}).get("items") or []):
+              rec = normalize_crossref(item)
+              if rec and rec.get("doi") == overlap_doi:
+                  cr_overlap = rec
+                  break
+          ep_overlap = next(
+              (r for r in search_europe_pmc(f"DOI:{overlap_doi}", 5) if r.get("doi") == overlap_doi),
+              None,
+          )
+          if cr_overlap is None or ep_overlap is None:
+              raise SystemExit("live exact-DOI overlap probe was not resolved by both required sources")
+          works, _ = deduplicate_records([cr_overlap, ep_overlap])
+          if len(works) != 1 or len(works[0].get("source_records") or []) != 2:
+              raise SystemExit("live Crossref + Europe PMC duplicate did not collapse to one two-source work")
+          print(f"LIVE_CROSS_SOURCE_DEDUP=PASS doi={overlap_doi} source_records=2")
 
           oa, status = search_openalex(probe, 2, api_key=os.getenv("OPENALEX_API_KEY") or None)
           if status == "PASS" and not oa:
