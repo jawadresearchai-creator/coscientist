@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      COSCI_JOB_ID: COSCI-S11-PUB-FINAL-001
+      COSCI_JOB_ID: COSCI-S11-PUB-FINAL2-001
       PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
