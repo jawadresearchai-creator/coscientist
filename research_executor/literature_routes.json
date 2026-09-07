@@ -1,0 +1,35 @@
+{
+  "schema_version": "cosci.literature-routes/1.0",
+  "policy": {
+    "zero_cost_only": true,
+    "automatic_paid_routes": false,
+    "private_query_only": true,
+    "deduplication_required": true,
+    "evidence_traceability_required": true,
+    "checkpoint_required": true,
+    "required_live_sources": ["crossref", "europe-pmc"],
+    "optional_sources": ["openalex-free-key"]
+  },
+  "routes": {
+    "crossref": {
+      "cost": "FREE",
+      "authentication": "NONE_REQUIRED",
+      "base_url": "https://api.crossref.org/works",
+      "role": "global DOI and publisher-deposited scholarly metadata"
+    },
+    "europe-pmc": {
+      "cost": "FREE",
+      "authentication": "NONE_REQUIRED",
+      "base_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
+      "role": "life-sciences metadata, abstracts, PubMed/PMC identifiers"
+    },
+    "openalex-free-key": {
+      "cost": "FREE_TIER",
+      "authentication": "OPTIONAL_FREE_API_KEY",
+      "base_url": "https://api.openalex.org/works",
+      "environment_variable": "OPENALEX_API_KEY",
+      "role": "broad scholarly graph enrichment and identifier reconciliation",
+      "fallback_when_missing_key": "SKIP_WITHOUT_FAILURE"
+    }
+  }
+}
