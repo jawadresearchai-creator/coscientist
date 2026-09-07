@@ -1,0 +1,71 @@
+name: Research CoScientist Session 11 Publication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/research-executor-session11-publication.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COSCI_JOB_ID: COSCI-S11-PUB-001
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned publication renderers
+        run: >-
+          python -m pip install --disable-pip-version-check --quiet
+          "python-docx==1.2.0" "reportlab==5.0.1" "Pillow==12.3.0"
+      - name: Run publication regression tests
+        run: >-
+          python -m unittest
+          research_executor.tests.test_publication
+          research_executor.tests.test_factorial_rnaseq
+          -v
+      - name: Execute private Session 11 publication job
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set +e
+          python -m research_executor.publication \
+            --job-id "$COSCI_JOB_ID" \
+            --public-status out/publication-status.json \
+            > "$RUNNER_TEMP/publication-private-cli.log" 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "SESSION11_PUBLICATION=FAILED job_id=$COSCI_JOB_ID"
+            tail -n 60 "$RUNNER_TEMP/publication-private-cli.log"
+            exit "$rc"
+          fi
+          echo "SESSION11_PUBLICATION=PASS job_id=$COSCI_JOB_ID"
+      - name: Validate public-safe receipt
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_executor.public_status import validate_public_status
+          status=json.loads(Path('out/publication-status.json').read_text())
+          validate_public_status(status)
+          if status['privacy_class'] != 'PUBLIC_EXECUTOR_SAFE':
+              raise SystemExit('receipt privacy class failure')
+          print('SESSION11_PUBLICATION_RECEIPT=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-session11-publication-status
+          path: out/publication-status.json
+          if-no-files-found: error
+          retention-days: 7
