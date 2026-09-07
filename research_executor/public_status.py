@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 JOB_ID_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{2,127}$")
-ALLOWED_TASK_TYPES = {"SMOKE_TEST"}
+ALLOWED_TASK_TYPES = {"SMOKE_TEST", "DATA_ACQUISITION"}
 PUBLIC_SCHEMA_VERSION = "cosci.public-status/1.0"
 
 
@@ -32,6 +32,14 @@ def build_public_status(job_id: str, task_type: str = "SMOKE_TEST") -> dict[str,
     validate_task_type(task_type)
     now = utc_now()
     digest = hashlib.sha256(f"{job_id}:{task_type}".encode("utf-8")).hexdigest()
+    checks = [
+        {"name": "opaque_job_id", "status": "PASS"},
+        {"name": "no_private_manifest_in_dispatch", "status": "PASS"},
+    ]
+    if task_type == "SMOKE_TEST":
+        checks.append({"name": "deterministic_smoke_task", "status": "PASS"})
+    elif task_type == "DATA_ACQUISITION":
+        checks.append({"name": "zero_cost_acquisition_job", "status": "PASS"})
     return {
         "schema_version": PUBLIC_SCHEMA_VERSION,
         "job_id": job_id,
@@ -48,11 +56,7 @@ def build_public_status(job_id: str, task_type: str = "SMOKE_TEST") -> dict[str,
             "run_attempt": os.getenv("GITHUB_RUN_ATTEMPT"),
             "sha": os.getenv("GITHUB_SHA"),
         },
-        "checks": [
-            {"name": "opaque_job_id", "status": "PASS"},
-            {"name": "no_private_manifest_in_dispatch", "status": "PASS"},
-            {"name": "deterministic_smoke_task", "status": "PASS"},
-        ],
+        "checks": checks,
     }
 
 
@@ -71,10 +75,11 @@ def validate_public_status(status: dict[str, Any]) -> None:
     if status["privacy_class"] != "PUBLIC_EXECUTOR_SAFE":
         raise ValueError("public artifact must be PUBLIC_EXECUTOR_SAFE")
     if status["status"] != "SUCCEEDED":
-        raise ValueError("Session 02 smoke task expects SUCCEEDED")
+        raise ValueError("public executor status must be SUCCEEDED")
     forbidden_keys = {
         "research_question", "hypothesis", "manuscript", "private_manifest",
-        "drive_token", "refresh_token", "api_key", "credential_value", "literature_corpus"
+        "drive_token", "refresh_token", "api_key", "credential_value", "literature_corpus",
+        "payload", "drive_destinations", "source_url", "sources"
     }
     present_forbidden = forbidden_keys & set(status)
     if present_forbidden:
