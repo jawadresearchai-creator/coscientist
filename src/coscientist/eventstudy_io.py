@@ -10,6 +10,11 @@ from typing import Any
 
 import pandas as pd
 
+# Capture pandas' real implementation at import time.  The V3 launcher
+# temporarily monkey-patches ``pd.read_csv`` for ticker-bearing stages, so the
+# safeguard must not dispatch through the patched attribute or it would recurse.
+_PANDAS_READ_CSV = pd.read_csv
+
 
 def read_csv_preserve_literals(*args: Any, **kwargs: Any) -> pd.DataFrame:
     """Read CSV while preserving literal strings such as ticker ``NA``.
@@ -19,4 +24,4 @@ def read_csv_preserve_literals(*args: Any, **kwargs: Any) -> pd.DataFrame:
     the caller explicitly overrides ``keep_default_na``.
     """
     kwargs.setdefault("keep_default_na", False)
-    return pd.read_csv(*args, **kwargs)
+    return _PANDAS_READ_CSV(*args, **kwargs)
