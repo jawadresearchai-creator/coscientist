@@ -26,6 +26,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install zero-cost test dependency
+        run: python -m pip install --disable-pip-version-check pytest
       - name: Run full executor tests including adversarial policy
         run: python -m pytest research_executor/tests -q
       - name: Execute blocked private review job
