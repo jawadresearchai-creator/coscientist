@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": {"const": "cosci.public-status/1.0"},
     "job_id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]{2,127}$"},
-    "task_type": {"enum": ["SMOKE_TEST", "DATA_ACQUISITION", "ANALYSIS", "LITERATURE", "METHODOLOGY"]},
+    "task_type": {"enum": ["SMOKE_TEST", "DATA_ACQUISITION", "ANALYSIS", "LITERATURE", "METHODOLOGY", "PUBLICATION"]},
     "status": {"const": "SUCCEEDED"},
     "privacy_class": {"const": "PUBLIC_EXECUTOR_SAFE"},
     "executor": {"const": "GITHUB_ACTIONS_PUBLIC"},
