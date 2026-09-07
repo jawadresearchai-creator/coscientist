@@ -22,8 +22,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install review test dependency
+        run: python -m pip install --disable-pip-version-check --quiet pytest
       - name: Run completion-first review tests
-        run: python -m unittest research_executor.tests.test_adversarial -v
+        run: python -m pytest research_executor/tests/test_adversarial.py -q
       - name: Execute private review cycle 1
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
