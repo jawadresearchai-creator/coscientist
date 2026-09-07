@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 JOB_ID_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{2,127}$")
-ALLOWED_TASK_TYPES = {"SMOKE_TEST", "DATA_ACQUISITION"}
+ALLOWED_TASK_TYPES = {"SMOKE_TEST", "DATA_ACQUISITION", "ANALYSIS"}
 PUBLIC_SCHEMA_VERSION = "cosci.public-status/1.0"
 
 
@@ -39,7 +39,9 @@ def build_public_status(job_id: str, task_type: str = "SMOKE_TEST") -> dict[str,
     if task_type == "SMOKE_TEST":
         checks.append({"name": "deterministic_smoke_task", "status": "PASS"})
     elif task_type == "DATA_ACQUISITION":
-        checks.append({"name": "zero_cost_acquisition_job", "status": "PASS"})
+        checks.append({"name": "private_acquisition_execution", "status": "PASS"})
+    elif task_type == "ANALYSIS":
+        checks.append({"name": "private_deterministic_analysis", "status": "PASS"})
     return {
         "schema_version": PUBLIC_SCHEMA_VERSION,
         "job_id": job_id,
@@ -75,11 +77,11 @@ def validate_public_status(status: dict[str, Any]) -> None:
     if status["privacy_class"] != "PUBLIC_EXECUTOR_SAFE":
         raise ValueError("public artifact must be PUBLIC_EXECUTOR_SAFE")
     if status["status"] != "SUCCEEDED":
-        raise ValueError("public executor status must be SUCCEEDED")
+        raise ValueError("public success receipt expects SUCCEEDED")
     forbidden_keys = {
         "research_question", "hypothesis", "manuscript", "private_manifest",
         "drive_token", "refresh_token", "api_key", "credential_value", "literature_corpus",
-        "payload", "drive_destinations", "source_url", "sources"
+        "source_url", "drive_file_id", "input_file_id", "selected_accession"
     }
     present_forbidden = forbidden_keys & set(status)
     if present_forbidden:
