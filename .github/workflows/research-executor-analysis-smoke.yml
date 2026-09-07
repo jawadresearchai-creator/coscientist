@@ -1,0 +1,148 @@
+name: Research CoScientist Deterministic Analysis Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Opaque Research CoScientist analysis job ID only"
+        required: true
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "research_executor/analysis.py"
+      - "research_executor/analysis_routes.json"
+      - "research_executor/tests/test_analysis.py"
+      - "research_executor/public_status.py"
+      - ".github/workflows/research-executor-analysis-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-analysis-${{ github.event_name == 'workflow_dispatch' && inputs.job_id || 'COSCI-S06-ANALYSIS-001' }}
+  cancel-in-progress: false
+
+jobs:
+  analysis-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COSCI_JOB_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.job_id || 'COSCI-S06-ANALYSIS-001' }}
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+      NXF_VER: "25.10.4"
+    steps:
+      - name: Checkout public executor
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install and verify deterministic analysis runtimes
+        run: |
+          set -euo pipefail
+          curl -fsSL https://get.nextflow.io | bash
+          sudo install -m 0755 nextflow /usr/local/bin/nextflow
+          rm -f nextflow
+          if ! command -v Rscript >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq r-base-core
+          fi
+          python --version
+          Rscript --version
+          nextflow -version
+
+      - name: Live-smoke R and Nextflow adapters
+        run: |
+          set -euo pipefail
+          Rscript --vanilla -e 'x <- mean(c(1,2,3)); stopifnot(abs(x-2) < 1e-12)' \
+            > "$RUNNER_TEMP/r-analysis-smoke.txt" 2>&1
+          echo "R_ANALYSIS_ADAPTER=PASS"
+
+          cat > "$RUNNER_TEMP/analysis-smoke.nf" <<'NF'
+          nextflow.enable.dsl=2
+          process ANALYSIS_ADAPTER_SMOKE {
+            output:
+            path 'receipt.txt'
+            script:
+            """
+            printf 'nextflow-analysis-adapter-pass\n' > receipt.txt
+            """
+          }
+          workflow {
+            ANALYSIS_ADAPTER_SMOKE()
+          }
+          NF
+          (cd "$RUNNER_TEMP" && nextflow -ansi-log false run analysis-smoke.nf \
+            > "$RUNNER_TEMP/nextflow-analysis-smoke.txt" 2>&1)
+          echo "NEXTFLOW_ANALYSIS_ADAPTER=PASS"
+
+      - name: Run full executor tests including deterministic analysis
+        run: >-
+          python -m unittest
+          research_executor.tests.test_executor
+          research_executor.tests.test_drive_bridge
+          research_executor.tests.test_acquisition
+          research_executor.tests.test_omics
+          research_executor.tests.test_analysis
+          -v
+
+      - name: Execute private Drive deterministic analysis
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set +e
+          python -m research_executor.analysis \
+            --job-id "$COSCI_JOB_ID" \
+            --public-status out/analysis-status.json \
+            > "$RUNNER_TEMP/analysis-private-cli.log" 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "DETERMINISTIC_ANALYSIS=FAILED job_id=$COSCI_JOB_ID"
+            exit "$rc"
+          fi
+          echo "DETERMINISTIC_ANALYSIS=PASS job_id=$COSCI_JOB_ID"
+
+      - name: Validate public receipt contains no private analysis details
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_executor.public_status import validate_public_status
+
+          p = Path("out/analysis-status.json")
+          status = json.loads(p.read_text(encoding="utf-8"))
+          validate_public_status(status)
+          forbidden = {
+              "private_manifest", "payload", "inputs", "input", "drive_file_id",
+              "input_file_id", "source_result_file_id", "expected_sha256", "analysis",
+              "analysis_definition_sha256", "research_question", "hypothesis",
+              "selected_accession", "fastq", "api_key", "refresh_token", "credential_value"
+          }
+          def keys(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      yield str(key).lower()
+                      yield from keys(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      yield from keys(child)
+          leaked = sorted(forbidden.intersection(set(keys(status))))
+          if leaked:
+              raise SystemExit(f"private analysis fields leaked to public artifact: {leaked}")
+          print("PUBLIC_EXECUTOR_SAFE analysis receipt validation PASS")
+          PY
+
+      - name: Upload public-safe analysis receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-analysis-status-${{ env.COSCI_JOB_ID }}
+          path: out/analysis-status.json
+          if-no-files-found: error
+          retention-days: 7
