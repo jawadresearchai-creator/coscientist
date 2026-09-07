@@ -9,10 +9,13 @@ on:
       - "src/coscientist/eventstudy_price_metrics.py"
       - "src/coscientist/eventstudy_fact_selection.py"
       - "src/coscientist/eventstudy_controls.py"
+      - "src/coscientist/eventstudy_io.py"
       - "scripts/build_astra_analysis_ready_v3.py"
       - "scripts/run_astra_v3_hardened.py"
+      - "scripts/run_astra_v3_literal_safe.py"
       - "tests/test_astra_v3.py"
       - "tests/test_eventstudy_fact_selection.py"
+      - "tests/test_eventstudy_io.py"
       - "README.md"
       - ".github/workflows/astra-analysis-ready-v3.yml"
       - "ops/astra_v3_launch.txt"
@@ -36,13 +39,14 @@ jobs:
           python-version: "3.12"
       - name: Install package and test dependencies
         run: python -m pip install -e ".[dev]" pyarrow
-      - name: Compile hardened execution wrapper
-        run: python -m py_compile scripts/run_astra_v3_hardened.py
+      - name: Compile V3 execution wrappers
+        run: python -m py_compile scripts/run_astra_v3_hardened.py scripts/run_astra_v3_literal_safe.py
       - name: Run V3 repair tests and repository integrity tests
         run: >-
           pytest
           tests/test_astra_v3.py
           tests/test_eventstudy_fact_selection.py
+          tests/test_eventstudy_io.py
           tests/test_integrity.py
           -v
 
@@ -64,4 +68,4 @@ jobs:
       - name: Install runtime
         run: python -m pip install -e ".[dev]" pyarrow
       - name: Build and publish immutable outcome-blind V3
-        run: python scripts/run_astra_v3_hardened.py
+        run: python scripts/run_astra_v3_literal_safe.py
