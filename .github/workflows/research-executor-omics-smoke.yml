@@ -54,15 +54,18 @@ jobs:
             https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-ubuntu64.tar.gz \
             -o "$RUNNER_TEMP/sratoolkit.tar.gz"
           tar -xzf "$RUNNER_TEMP/sratoolkit.tar.gz" -C "$RUNNER_TEMP/sratoolkit"
-          SRA_BIN_DIR="$(dirname "$(find "$RUNNER_TEMP/sratoolkit" -type f -name prefetch -perm -111 | head -n 1)")"
-          test -n "$SRA_BIN_DIR"
+          PREFETCH_BIN="$(find "$RUNNER_TEMP/sratoolkit" -type f -name prefetch | head -n 1)"
+          test -n "$PREFETCH_BIN"
+          SRA_BIN_DIR="$(dirname "$PREFETCH_BIN")"
+          test -x "$SRA_BIN_DIR/prefetch"
+          test -x "$SRA_BIN_DIR/fasterq-dump"
           echo "$SRA_BIN_DIR" >> "$GITHUB_PATH"
           export PATH="$SRA_BIN_DIR:$PATH"
 
           pysradb --version
           nextflow -version
-          prefetch --version
-          fasterq-dump --version
+          "$SRA_BIN_DIR/prefetch" --version
+          "$SRA_BIN_DIR/fasterq-dump" --version
 
       - name: Live-smoke nf-core, pysradb, SRA Toolkit and GEO routes
         run: |
