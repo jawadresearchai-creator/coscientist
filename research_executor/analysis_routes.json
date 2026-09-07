@@ -1,0 +1,37 @@
+{
+  "schema_version": "cosci.analysis-routes/1.0",
+  "policy": {
+    "zero_cost_only": true,
+    "automatic_paid_routes": false,
+    "raw_inputs_immutable": true,
+    "derived_outputs_separate": true,
+    "environment_capture_required": true,
+    "checkpoint_required": true
+  },
+  "routes": {
+    "python-builtin": {
+      "cost": "FREE",
+      "runtime": "CPython",
+      "supports": ["FASTQ_QC_SUMMARY", "TABLE_TRANSFORM", "CUSTOM_PYTHON_LOCKED"],
+      "requires_user_key": false
+    },
+    "rscript": {
+      "cost": "FREE",
+      "runtime": "Rscript",
+      "supports": ["CUSTOM_R_LOCKED", "STATISTICAL_MODEL"],
+      "requires_user_key": false
+    },
+    "nextflow": {
+      "cost": "FREE",
+      "runtime": "Nextflow",
+      "supports": ["LOCAL_PIPELINE", "NFCORE_PIPELINE"],
+      "requires_user_key": false
+    },
+    "nfcore": {
+      "cost": "FREE",
+      "runtime": "Nextflow + nf-core pipeline",
+      "supports": ["MATURE_DOMAIN_PIPELINE"],
+      "requires_user_key": false
+    }
+  }
+}
