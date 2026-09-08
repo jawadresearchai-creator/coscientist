@@ -39,13 +39,7 @@ def normalize_cik(value: object) -> str:
 
 
 def normalize_sec_filed_date(value: object) -> str:
-    """Normalize EDGAR master-index Date Filed values to ISO YYYY-MM-DD.
-
-    SEC daily master indexes may expose the filing date as compact ``YYYYMMDD``.
-    Downstream design logic uses ISO dates, so normalization happens at the
-    parser boundary rather than relying on every consumer to remember both
-    representations.
-    """
+    """Normalize EDGAR master-index Date Filed values to ISO YYYY-MM-DD."""
     s = str(value or "").strip()
     if not s:
         return ""
@@ -89,6 +83,34 @@ def residualized_exposure(x: np.ndarray, controls: np.ndarray) -> tuple[np.ndarr
     if not np.isfinite(sxx) or sxx <= 0:
         raise ValueError("exposure has no residual variation after controls")
     return resid, sxx
+
+
+def weighted_residualized_exposure(
+    x: np.ndarray, controls: np.ndarray, weights: np.ndarray
+) -> tuple[np.ndarray, float, np.ndarray]:
+    """Residualize exposure for WLS and return whitened residuals/weights.
+
+    The returned residual is in sqrt(weight)-whitened space. Multiplying each
+    placebo outcome by the returned sqrt weights and passing it to
+    ``placebo_coefficients`` gives the exact Frisch-Waugh-Lovell WLS exposure
+    coefficient. Weights must be fixed from pre-event information.
+    """
+    x = np.asarray(x, dtype=float)
+    X = np.asarray(controls, dtype=float)
+    w = np.asarray(weights, dtype=float)
+    if x.ndim != 1 or X.ndim != 2 or w.ndim != 1 or len(x) != len(X) or len(x) != len(w):
+        raise ValueError("x, controls and weights have incompatible shapes")
+    if not np.isfinite(w).all() or np.any(w <= 0):
+        raise ValueError("weights must be finite and strictly positive")
+    sqrt_w = np.sqrt(w)
+    xw = x * sqrt_w
+    Xw = X * sqrt_w[:, None]
+    coef, *_ = np.linalg.lstsq(Xw, xw, rcond=None)
+    resid_w = xw - Xw @ coef
+    sxx = float(np.dot(resid_w, resid_w))
+    if not np.isfinite(sxx) or sxx <= 0:
+        raise ValueError("weighted exposure has no residual variation after controls")
+    return resid_w, sxx, sqrt_w
 
 
 def placebo_coefficients(residual_x: np.ndarray, sxx: float, placebo_y: np.ndarray) -> np.ndarray:
@@ -144,3 +166,18 @@ def choose_primary_exposure(*, frontier_nonzero_share: float, frontier_mde80: fl
     if broad_mde80 <= max_mde80:
         return "primary_ai_exposure_z"
     return "POWER_REPAIR_REQUIRED"
+
+
+def select_calibration_candidate(
+    candidates: list[dict], *, threshold: float = 0.005
+) -> dict | None:
+    """Select the simplest predeclared candidate that passes calibration.
+
+    ``candidates`` must already be ordered from least to most complex/restrictive.
+    The function never ranks by event outcomes or by validation results.
+    """
+    for candidate in candidates:
+        mde = float(candidate.get("calibration_mde80", float("inf")))
+        if np.isfinite(mde) and mde <= threshold:
+            return candidate
+    return None
