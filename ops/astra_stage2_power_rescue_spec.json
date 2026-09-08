@@ -1,0 +1,47 @@
+{
+  "paper_id": "MS-ASTRA-REVALUE-2026",
+  "spec_version": "ASTRA_STAGE2_POWER_RESCUE_SPEC_V1",
+  "created_before_execution": true,
+  "outcome_access": "PROHIBITED",
+  "pre_event_cutoff": "2026-08-06",
+  "stage1_placebo_block": "last 100 eligible pre-event trading dates (already consumed by the failed first rescue)",
+  "stage2_placebo_block": "the immediately preceding 100 eligible pre-event trading dates, i.e. eligible_event_dates[-200:-100]",
+  "stage2_calibration": "first 50 dates of the stage2 block, paired chronologically into 25 non-overlapping two-day pseudo-events",
+  "stage2_validation": "last 50 dates of the stage2 block, paired chronologically into 25 non-overlapping two-day pseudo-events; never used for candidate selection",
+  "expected_return_estimation": "for every pseudo-event and every candidate, exact 200 benchmark-factor return dates strictly preceding the pseudo-event",
+  "calibration_mde80_max_return_units": 0.0045,
+  "validation_mde80_max_return_units": 0.005,
+  "minimum_pseudo_event_sample_n": 3000,
+  "primary_exposure_preference": [
+    "frontier_ai_exposure_z when its pre-event nonzero-share gate remains >=0.25",
+    "primary_ai_exposure_z otherwise or only after all frontier candidates fail calibration"
+  ],
+  "cross_sectional_controls": {
+    "continuous": [
+      "log_market_cap",
+      "profitability_roa",
+      "selected_expected_return_model_residual_sigma",
+      "pre_event_market_beta_200",
+      "pre_event_alpha_200"
+    ],
+    "categorical": [
+      "hierarchical_industry_cell",
+      "exchange",
+      "pre_event_form"
+    ],
+    "hierarchical_industry_cell_rule": "use SIC4 when that exact SIC has >=20 firms in the pseudo-event sample; otherwise SIC3 when its prefix has >=20 firms; otherwise SIC2"
+  },
+  "candidate_order": [
+    "SPY__OLS__FULL",
+    "MULTI3__OLS__FULL",
+    "SPY__WLS__FULL",
+    "MULTI3__WLS__FULL",
+    "SPY__WLS__VOL_LE_90PCT",
+    "MULTI3__WLS__VOL_LE_90PCT",
+    "SPY__WLS__VOL_LE_80PCT",
+    "MULTI3__WLS__VOL_LE_80PCT"
+  ],
+  "wls_rule": "inverse selected-model residual variance with sigma clipped to positive-sigma p10/p90; zero/non-finite sigma receives p90 sigma before inversion (lowest allowed precision weight)",
+  "selection_rule": "within the frozen candidate order and exposure preference, select the first candidate with calibration MDE80 <=0.45pp; test exactly that candidate once on untouched validation; publish only if validation MDE80 <=0.50pp",
+  "failure_rule": "if no candidate passes calibration or the selected candidate fails validation, publish nothing, mutate no paper state, keep PRE_FREEZE_AUDIT pending, and keep Astra outcomes locked"
+}
