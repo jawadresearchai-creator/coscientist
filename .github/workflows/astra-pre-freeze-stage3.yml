@@ -1,0 +1,57 @@
+name: Astra Pre-Freeze Stage3 Matched Rescue
+
+on:
+  push:
+    branches:
+      - astra-data-v3-repair-v3
+    paths:
+      - "scripts/rescue_astra_pre_freeze_stage3_matched.py"
+      - "ops/astra_stage3_estimand_rescue_spec.json"
+      - "ops/astra_stage3_launch.txt"
+      - ".github/workflows/astra-pre-freeze-stage3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astra-pre-freeze-stage3
+  cancel-in-progress: false
+
+jobs:
+  test-stage3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]" pyarrow yfinance
+      - name: Compile and validate frozen stage3 spec
+        run: |
+          python -m py_compile scripts/rescue_astra_pre_freeze_stage3_matched.py
+          python -m json.tool ops/astra_stage3_estimand_rescue_spec.json >/dev/null
+      - name: Run integrity gates
+        run: pytest tests/test_astra_design_repair.py tests/test_integrity.py -v
+
+  acquire-test-publish-stage3:
+    needs: test-stage3
+    if: ${{ contains(github.event.head_commit.message, '[repair-astra-pre-freeze-stage3]') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: "1"
+      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime
+        run: python -m pip install -e ".[dev]" pyarrow yfinance
+      - name: Acquire fresh pre-event history and execute stage3
+        run: python scripts/rescue_astra_pre_freeze_stage3_matched.py
