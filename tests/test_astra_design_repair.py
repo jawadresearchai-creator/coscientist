@@ -4,6 +4,7 @@ import pytest
 
 from coscientist.astra_design_repair import (
     choose_primary_exposure,
+    conservative_inverse_variance_weights,
     empirical_mde,
     normalize_cik,
     normalize_sec_filed_date,
@@ -56,11 +57,18 @@ def test_residualized_exposure_is_orthogonal_to_controls():
     beta_direct = np.linalg.lstsq(X_full * sw, y * sqrt_w, rcond=None)[0][-1]
     assert beta_fwl == pytest.approx(beta_direct)
 
+    sigma = np.array([0.02, 0.03, 0.0, np.nan, 0.01, 0.04])
+    safe_w, meta = conservative_inverse_variance_weights(sigma)
+    assert np.isfinite(safe_w).all() and np.all(safe_w > 0)
+    assert meta["invalid_or_zero_sigma_downweighted"] == 2.0
+    # Degenerate histories receive the minimum precision weight, not the maximum.
+    assert safe_w[2] == pytest.approx(safe_w[3])
+    assert safe_w[2] <= np.median(safe_w)
+
 
 def test_empirical_mde_uses_placebo_coefficient_dispersion():
     rx = np.array([-1.5, -0.5, 0.5, 1.5], dtype=float)
     sxx = float(rx @ rx)
-    # 25 common pseudo-event windows with cross-firm patterns retained by column.
     scale = np.linspace(-0.02, 0.02, 25)
     Y = np.outer(rx, scale)
     b = placebo_coefficients(rx, sxx, Y)
