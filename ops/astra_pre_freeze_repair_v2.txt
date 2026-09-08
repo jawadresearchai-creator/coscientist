@@ -3,3 +3,5 @@ Launch authorization for the outcome-blind Astra pre-freeze V2 design repair.
 Scope is limited to pre-event data, EDGAR current-report metadata, empirical pre-event placebo power, immutable design V2 publication, and paper-local pre-freeze state repair. Astra event-window outcomes remain locked.
 
 Relaunch: hardened SEC daily-index transport requests identity encoding and validates the master-index header/row count before parsing.
+
+Relaunch 2: validator now accepts SEC's actual stable header prefix `CIK|Company Name|Form Type|Date Filed|` (including the observed `File Name` final column) after the prior fail-closed mismatch. Proceed with corrected EDGAR join, placebo-power calculation, exposure promotion rule, immutable V2 publication, and paper-local pre-freeze repair only.
