@@ -1,0 +1,52 @@
+name: Research CoScientist Session 11 Review Cycle 2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/research-executor-session11-review-cycle2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review-cycle-2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COSCI_JOB_ID: COSCI-S11-REV2-001
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install review test dependency
+        run: python -m pip install --disable-pip-version-check --quiet pytest
+      - name: Run completion-first review tests
+        run: python -m pytest research_executor/tests/test_adversarial.py -q
+      - name: Execute private review cycle 2
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m research_executor.adversarial --job-id "$COSCI_JOB_ID" --public-status out/review-status.json > "$RUNNER_TEMP/review.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/review.log"; exit 1; }
+          echo "SESSION11_REVIEW_CYCLE2=PASS"
+      - name: Validate public-safe receipt
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_executor.public_status import validate_public_status
+          status=json.loads(Path('out/review-status.json').read_text())
+          validate_public_status(status)
+          assert status['privacy_class']=='PUBLIC_EXECUTOR_SAFE'
+          print('SESSION11_REVIEW2_RECEIPT=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-session11-review-cycle2-status
+          path: out/review-status.json
+          retention-days: 7
