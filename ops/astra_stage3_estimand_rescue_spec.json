@@ -1,0 +1,68 @@
+{
+  "paper_id": "MS-ASTRA-REVALUE-2026",
+  "spec_version": "ASTRA_STAGE3_MATCHED_CONTRAST_SPEC_V1",
+  "created_before_stage3_price_acquisition": true,
+  "created_before_stage3_candidate_evaluation": true,
+  "outcome_access": "PROHIBITED",
+  "scientific_reason": "Two independently validated slope-based pre-event rescue designs failed the unchanged 0.50 percentage-point per-SD MDE80 criterion. Stage3 therefore changes the estimand rather than tuning another slope model on consumed placebo periods.",
+  "price_extension": {
+    "vendor": "Yahoo Finance via yfinance, matching the established lawful fallback vendor in the Astra acquisition receipt",
+    "start_inclusive": "2023-01-01",
+    "end_exclusive": "2025-01-01",
+    "allowed_dates": "2023-01-01 through 2024-12-31 only",
+    "post_cutoff_access": "PROHIBITED",
+    "required_benchmarks": ["SPY", "QQQ", "IWM"],
+    "price_field": "Adj Close when supplied; otherwise Close only with an explicit QA flag",
+    "immutability": "publish the raw stage3 pre-event extension and acquisition/QA receipt before any stage3 design publication"
+  },
+  "fresh_placebo_period": {
+    "calibration": "all non-overlapping two-trading-day pseudo-events whose first day is in 2024-01-01 through 2024-06-30",
+    "validation": "all non-overlapping two-trading-day pseudo-events whose first day is in 2024-07-01 through 2024-12-31",
+    "prior_rescue_overlap": "ZERO because stage1/stage2 consumed only eligible dates from the existing 2025-01-01 onward panel",
+    "expected_return_estimation": "exact 200 SPY return dates strictly preceding each pseudo-event",
+    "validation_use": "never used for candidate selection"
+  },
+  "estimand": {
+    "type": "matched high-versus-low AI-exposure CAR contrast",
+    "primary_outcome": "two-day CAR[0,+1] from an exact-200 SPY market model",
+    "blocking_variables": ["hierarchical industry cell", "pre-event log-market-cap quintile"],
+    "industry_rule": "use SIC4 when exact SIC has >=20 eligible firms, otherwise SIC3 when prefix has >=20, otherwise SIC2",
+    "size_rule": "quintiles of pre-event log market capitalization within the eligible analysis sample, fixed before placebo outcomes",
+    "within_block_rule": "classify firms by the candidate exposure using global quantile cutoffs; retain only blocks containing at least 5 high and 5 low firms; include block fixed effects in the high-versus-low regression",
+    "equivalent_per_sd_mde": "contrast MDE80 divided by the realized mean exposure-z gap between high and low groups",
+    "power_standard": "equivalent per-SD validation MDE80 must be <=0.005 return units (0.50 percentage points), unchanged from prior stages"
+  },
+  "candidate_order": [
+    {
+      "name": "FRONTIER_Q25_Q75",
+      "exposure": "frontier_ai_exposure_z",
+      "low_rule": "<=25th percentile",
+      "high_rule": ">=75th percentile"
+    },
+    {
+      "name": "FRONTIER_TERCILES",
+      "exposure": "frontier_ai_exposure_z",
+      "low_rule": "<=33.333rd percentile",
+      "high_rule": ">=66.667th percentile"
+    },
+    {
+      "name": "BROAD_Q25_Q75",
+      "exposure": "primary_ai_exposure_z",
+      "low_rule": "<=25th percentile",
+      "high_rule": ">=75th percentile"
+    },
+    {
+      "name": "BROAD_TERCILES",
+      "exposure": "primary_ai_exposure_z",
+      "low_rule": "<=33.333rd percentile",
+      "high_rule": ">=66.667th percentile"
+    }
+  ],
+  "frontier_gate": "frontier candidates are admissible only if the already-fixed pre-event frontier nonzero-share remains >=0.25",
+  "minimum_candidate_firms": 2000,
+  "minimum_valid_placebo_windows_each_half": 40,
+  "calibration_equivalent_mde80_max_return_units": 0.0045,
+  "validation_equivalent_mde80_max_return_units": 0.005,
+  "selection_rule": "select the first admissible candidate in frozen order with calibration equivalent-per-SD MDE80 <=0.45pp; validate exactly that candidate once on 2024H2; publish design only if validation equivalent-per-SD MDE80 <=0.50pp",
+  "failure_rule": "if no candidate passes calibration or the selected candidate fails validation, publish no Design V2, mutate no paper lifecycle state, keep PRE_FREEZE_AUDIT pending, keep Astra outcomes locked, and escalate to research-question/estimand feasibility review rather than another tuning round"
+}
