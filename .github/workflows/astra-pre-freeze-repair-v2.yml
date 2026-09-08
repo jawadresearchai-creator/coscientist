@@ -11,6 +11,7 @@ on:
       - "scripts/rescue_astra_pre_freeze_power_v2.py"
       - "scripts/run_astra_pre_freeze_rescue_v2_hardened.py"
       - "scripts/rescue_astra_pre_freeze_power_stage2.py"
+      - "scripts/run_astra_pre_freeze_power_stage2_v2.py"
       - "tests/test_astra_design_repair.py"
       - "README.md"
       - ".github/workflows/astra-pre-freeze-repair-v2.yml"
@@ -43,7 +44,8 @@ jobs:
             scripts/run_astra_pre_freeze_repair_v2_hardened.py \
             scripts/rescue_astra_pre_freeze_power_v2.py \
             scripts/run_astra_pre_freeze_rescue_v2_hardened.py \
-            scripts/rescue_astra_pre_freeze_power_stage2.py
+            scripts/rescue_astra_pre_freeze_power_stage2.py \
+            scripts/run_astra_pre_freeze_power_stage2_v2.py
           python -m json.tool ops/astra_stage2_power_rescue_spec.json >/dev/null
       - name: Run repair and integrity gates
         run: pytest tests/test_astra_design_repair.py tests/test_integrity.py -v
@@ -69,7 +71,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ github.event.head_commit.message }}" == *"[repair-astra-pre-freeze-stage2]"* ]]; then
-            python scripts/rescue_astra_pre_freeze_power_stage2.py
+            python scripts/run_astra_pre_freeze_power_stage2_v2.py
           else
             python scripts/run_astra_pre_freeze_rescue_v2_hardened.py
           fi
