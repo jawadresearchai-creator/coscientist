@@ -1,0 +1,120 @@
+name: Research CoScientist Session 12 Hardening and Recovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "research_executor/recovery.py"
+      - "research_executor/tests/test_recovery.py"
+      - "research_executor/public_status.py"
+      - "research_executor/public-status.schema.json"
+      - ".github/workflows/research-executor-session12-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+      RECOVERY_JOB_ID: COSCI-S12-RECOVERY-001
+      FALLBACK_JOB_ID: COSCI-S12-FALLBACK-001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install full zero-cost regression dependencies
+        run: >-
+          python -m pip install --disable-pip-version-check --quiet
+          pytest
+          "python-docx==1.2.0"
+          "reportlab==5.0.1"
+          "Pillow==12.3.0"
+      - name: Run complete executor regression suite
+        run: python -m pytest research_executor/tests -q
+      - name: Prove acquisition fallback after controlled first-route failure
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m research_executor.acquisition \
+            --job-id "$FALLBACK_JOB_ID" \
+            --public-status out/fallback-status.json \
+            > "$RUNNER_TEMP/fallback-private.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/fallback-private.log"; exit 1; }
+          echo "SESSION12_FALLBACK=PASS"
+      - name: Inject controlled interruption after durable checkpoint
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set +e
+          python -m research_executor.recovery \
+            --job-id "$RECOVERY_JOB_ID" \
+            --phase inject \
+            --public-status out/should-not-exist.json \
+            > "$RUNNER_TEMP/recovery-inject.log" 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 75 ]; then
+            echo "Expected controlled exit 75, got $rc"
+            cat "$RUNNER_TEMP/recovery-inject.log"
+            exit 1
+          fi
+          if [ -f out/should-not-exist.json ]; then
+            echo "Public success receipt must not exist for interrupted phase"
+            exit 1
+          fi
+          echo "SESSION12_CONTROLLED_INTERRUPTION=PASS"
+      - name: Resume from durable checkpoint and reconcile canonical state
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m research_executor.recovery \
+            --job-id "$RECOVERY_JOB_ID" \
+            --phase resume \
+            --public-status out/recovery-status.json \
+            > "$RUNNER_TEMP/recovery-resume.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/recovery-resume.log"; exit 1; }
+          echo "SESSION12_CHECKPOINT_RESUME=PASS"
+      - name: Re-run exact completed job to prove duplicate protection
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          python -m research_executor.recovery \
+            --job-id "$RECOVERY_JOB_ID" \
+            --phase resume \
+            --public-status out/recovery-rerun-status.json \
+            > "$RUNNER_TEMP/recovery-rerun.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/recovery-rerun.log"; exit 1; }
+          grep -q 'reused_existing_result=true' "$RUNNER_TEMP/recovery-rerun.log"
+          echo "SESSION12_DUPLICATE_PROTECTION=PASS"
+      - name: Validate all public receipts are privacy-safe
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_executor.public_status import validate_public_status
+          for fn in ("out/fallback-status.json", "out/recovery-status.json", "out/recovery-rerun-status.json"):
+              p = Path(fn)
+              status = json.loads(p.read_text(encoding="utf-8"))
+              validate_public_status(status)
+              assert status["privacy_class"] == "PUBLIC_EXECUTOR_SAFE"
+          print("SESSION12_PUBLIC_PRIVACY=PASS")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-session12-hardening-status-${{ github.run_id }}
+          path: |
+            out/fallback-status.json
+            out/recovery-status.json
+            out/recovery-rerun-status.json
+          retention-days: 7
+          if-no-files-found: error
