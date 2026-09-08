@@ -10,10 +10,12 @@ on:
       - "scripts/run_astra_pre_freeze_repair_v2_hardened.py"
       - "scripts/rescue_astra_pre_freeze_power_v2.py"
       - "scripts/run_astra_pre_freeze_rescue_v2_hardened.py"
+      - "scripts/rescue_astra_pre_freeze_power_stage2.py"
       - "tests/test_astra_design_repair.py"
       - "README.md"
       - ".github/workflows/astra-pre-freeze-repair-v2.yml"
       - "ops/astra_pre_freeze_repair_v2.txt"
+      - "ops/astra_stage2_power_rescue_spec.json"
   workflow_dispatch:
 
 permissions:
@@ -35,13 +37,20 @@ jobs:
       - name: Install package and test dependencies
         run: python -m pip install -e ".[dev]" pyarrow
       - name: Compile repair builders and rescue
-        run: python -m py_compile scripts/repair_astra_pre_freeze_v2.py scripts/run_astra_pre_freeze_repair_v2_hardened.py scripts/rescue_astra_pre_freeze_power_v2.py scripts/run_astra_pre_freeze_rescue_v2_hardened.py
+        run: |
+          python -m py_compile \
+            scripts/repair_astra_pre_freeze_v2.py \
+            scripts/run_astra_pre_freeze_repair_v2_hardened.py \
+            scripts/rescue_astra_pre_freeze_power_v2.py \
+            scripts/run_astra_pre_freeze_rescue_v2_hardened.py \
+            scripts/rescue_astra_pre_freeze_power_stage2.py
+          python -m json.tool ops/astra_stage2_power_rescue_spec.json >/dev/null
       - name: Run repair and integrity gates
         run: pytest tests/test_astra_design_repair.py tests/test_integrity.py -v
 
   build-publish-repair:
     needs: test-pre-freeze-repair
-    if: ${{ contains(github.event.head_commit.message, '[repair-astra-pre-freeze-v2]') || github.event_name == 'workflow_dispatch' }}
+    if: ${{ contains(github.event.head_commit.message, '[repair-astra-pre-freeze-v2]') || contains(github.event.head_commit.message, '[repair-astra-pre-freeze-stage2]') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -57,4 +66,10 @@ jobs:
       - name: Install runtime
         run: python -m pip install -e ".[dev]" pyarrow
       - name: Rescue, repair and publish outcome-blind design V2
-        run: python scripts/run_astra_pre_freeze_rescue_v2_hardened.py
+        shell: bash
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"[repair-astra-pre-freeze-stage2]"* ]]; then
+            python scripts/rescue_astra_pre_freeze_power_stage2.py
+          else
+            python scripts/run_astra_pre_freeze_rescue_v2_hardened.py
+          fi
