@@ -19,11 +19,7 @@ _SEC_COMPACT_DATE = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
 
 
 def normalize_cik(value: object) -> str:
-    """Return SEC CIK as an unpadded digit string.
-
-    CSV round-trips sometimes turn CIKs into strings such as ``1397187.0``.
-    Treating those literally silently breaks joins against EDGAR master indexes.
-    """
+    """Return SEC CIK as an unpadded digit string."""
     s = str(value or "").strip()
     if not s:
         return ""
@@ -88,13 +84,7 @@ def residualized_exposure(x: np.ndarray, controls: np.ndarray) -> tuple[np.ndarr
 def weighted_residualized_exposure(
     x: np.ndarray, controls: np.ndarray, weights: np.ndarray
 ) -> tuple[np.ndarray, float, np.ndarray]:
-    """Residualize exposure for WLS and return whitened residuals/weights.
-
-    The returned residual is in sqrt(weight)-whitened space. Multiplying each
-    placebo outcome by the returned sqrt weights and passing it to
-    ``placebo_coefficients`` gives the exact Frisch-Waugh-Lovell WLS exposure
-    coefficient. Weights must be fixed from pre-event information.
-    """
+    """Residualize exposure for WLS and return whitened residuals/weights."""
     x = np.asarray(x, dtype=float)
     X = np.asarray(controls, dtype=float)
     w = np.asarray(weights, dtype=float)
@@ -113,12 +103,37 @@ def weighted_residualized_exposure(
     return resid_w, sxx, sqrt_w
 
 
-def placebo_coefficients(residual_x: np.ndarray, sxx: float, placebo_y: np.ndarray) -> np.ndarray:
-    """FWL exposure coefficients for many placebo outcomes with fixed controls.
+def conservative_inverse_variance_weights(sigma: np.ndarray) -> tuple[np.ndarray, dict[str, float]]:
+    """Build bounded pre-event precision weights without rewarding invalid sigma.
 
-    ``placebo_y`` is shaped (n_firms, n_windows). Cross-firm dependence is kept
-    intact because each column is one common pseudo-event window.
+    Strictly positive finite residual sigmas are clipped to their p10/p90 range.
+    Zero/non-finite sigma values are assigned the p90 sigma before inversion, so
+    stale/degenerate histories receive the *lowest* allowed precision weight,
+    never an infinite or dominant weight.
     """
+    s = np.asarray(sigma, dtype=float)
+    positive = s[np.isfinite(s) & (s > 0)]
+    if len(positive) < 2:
+        raise ValueError("insufficient positive residual sigmas for precision weighting")
+    lo, hi = float(np.quantile(positive, 0.10)), float(np.quantile(positive, 0.90))
+    if not (np.isfinite(lo) and np.isfinite(hi) and lo > 0 and hi >= lo):
+        raise ValueError("invalid residual-sigma clipping bounds")
+    bad = ~np.isfinite(s) | (s <= 0)
+    safe = np.where(bad, hi, s)
+    clipped = np.clip(safe, lo, hi)
+    w = 1.0 / np.square(clipped)
+    w = w / float(np.mean(w))
+    ess = float(np.square(w.sum()) / np.square(w).sum())
+    return w, {
+        "sigma_clip_p10": lo,
+        "sigma_clip_p90": hi,
+        "invalid_or_zero_sigma_downweighted": float(bad.sum()),
+        "weight_effective_n": ess,
+    }
+
+
+def placebo_coefficients(residual_x: np.ndarray, sxx: float, placebo_y: np.ndarray) -> np.ndarray:
+    """FWL exposure coefficients for many placebo outcomes with fixed controls."""
     rx = np.asarray(residual_x, dtype=float)
     Y = np.asarray(placebo_y, dtype=float)
     if Y.ndim != 2 or Y.shape[0] != len(rx):
@@ -171,11 +186,7 @@ def choose_primary_exposure(*, frontier_nonzero_share: float, frontier_mde80: fl
 def select_calibration_candidate(
     candidates: list[dict], *, threshold: float = 0.005
 ) -> dict | None:
-    """Select the simplest predeclared candidate that passes calibration.
-
-    ``candidates`` must already be ordered from least to most complex/restrictive.
-    The function never ranks by event outcomes or by validation results.
-    """
+    """Select the simplest predeclared candidate that passes calibration."""
     for candidate in candidates:
         mde = float(candidate.get("calibration_mde80", float("inf")))
         if np.isfinite(mde) and mde <= threshold:
