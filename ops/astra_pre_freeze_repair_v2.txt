@@ -5,3 +5,5 @@ Scope is limited to pre-event data, EDGAR current-report metadata, empirical pre
 Relaunch: hardened SEC daily-index transport requests identity encoding and validates the master-index header/row count before parsing.
 
 Relaunch 2: validator now accepts SEC's actual stable header prefix `CIK|Company Name|Form Type|Date Filed|` (including the observed `File Name` final column) after the prior fail-closed mismatch. Proceed with corrected EDGAR join, placebo-power calculation, exposure promotion rule, immutable V2 publication, and paper-local pre-freeze repair only.
+
+Relaunch 3: SEC master-index `Date Filed` is now normalized from compact `YYYYMMDD` to ISO `YYYY-MM-DD` at the parser boundary. Regression tests pass. Proceed with the same outcome-blind V2 repair scope; do not inspect Astra event-window outcomes.
