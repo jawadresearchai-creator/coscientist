@@ -1,0 +1,13 @@
+Stage3 Astra pre-freeze matched-contrast rescue launch control.
+
+Scientific boundary:
+- Astra event-window outcomes remain locked.
+- Acquire only 2023-01-01 through 2024-12-31 historical prices from Yahoo Finance via yfinance, matching the established acquisition vendor.
+- Execute ops/astra_stage3_estimand_rescue_spec.json exactly.
+- Use 2024H1 only for frozen candidate calibration.
+- Select the first candidate meeting <=0.45pp equivalent-per-SD MDE80.
+- Evaluate exactly that selected candidate once on untouched 2024H2.
+- Require <=0.50pp equivalent-per-SD validation MDE80.
+- Publish the immutable pre-event price extension after mechanical QA.
+- Publish Design V2 and mutate paper-local design state only if scientific validation passes.
+- On scientific failure, stop; do not lower thresholds, recycle validation, or inspect Astra outcomes.
