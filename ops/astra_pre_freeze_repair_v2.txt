@@ -9,3 +9,5 @@ Relaunch 2: validator now accepts SEC's actual stable header prefix `CIK|Company
 Relaunch 3: SEC master-index `Date Filed` is now normalized from compact `YYYYMMDD` to ISO `YYYY-MM-DD` at the parser boundary. Regression tests pass. Proceed with the same outcome-blind V2 repair scope; do not inspect Astra event-window outcomes.
 
 Relaunch 4: baseline empirical common-date power failed the unchanged 0.50pp MDE80 threshold. Run the predeclared outcome-blind rescue tournament only: rolling exact-200 pseudo-event models; fixed SPY/MULTI3, OLS/WLS and volatility-screen candidate order; first 25 placebo windows for selection; later 25 for one-shot validation. Publish V2 and patch paper-local state only if the calibration-selected candidate passes untouched validation. Do not inspect Astra event-window outcomes.
+
+Relaunch 5: the rescue is now routed through the hardened SEC identity-encoding/header-validating transport. All compile/test/integrity gates pass. Execute the same frozen rescue tournament without changing candidate order or threshold.
