@@ -6,6 +6,7 @@ from coscientist.astra_design_repair import (
     choose_primary_exposure,
     empirical_mde,
     normalize_cik,
+    normalize_sec_filed_date,
     parse_sec_master_current_reports,
     placebo_coefficients,
     residualized_exposure,
@@ -22,15 +23,16 @@ def test_normalize_cik_handles_decimal_padding_and_noise():
 
 def test_parse_sec_master_current_reports_keeps_only_requested_forms():
     text = "\n".join([
-        "1397187|LULULEMON ATHLETICA INC.|8-K|2026-09-03|edgar/data/1397187/a.htm",
-        "802481|PILGRIMS PRIDE CORP|8-K|2026-09-04|edgar/data/802481/b.htm",
-        "123|OTHER CO|10-K|2026-09-03|edgar/data/123/c.htm",
+        "1397187|LULULEMON ATHLETICA INC.|8-K|20260903|edgar/data/1397187/a.htm",
+        "802481|PILGRIMS PRIDE CORP|8-K|20260904|edgar/data/802481/b.htm",
+        "123|OTHER CO|10-K|20260903|edgar/data/123/c.htm",
         "not|a|valid|master|row|extra",
     ])
     got = parse_sec_master_current_reports(text, {"8-K", "8-K/A", "6-K", "6-K/A"})
     assert list(got["cik_norm"]) == ["1397187", "802481"]
     assert set(got["form"]) == {"8-K"}
     assert set(got["filed"]) == {"2026-09-03", "2026-09-04"}
+    assert normalize_sec_filed_date("2026-09-03") == "2026-09-03"
 
 
 def test_residualized_exposure_is_orthogonal_to_controls():
