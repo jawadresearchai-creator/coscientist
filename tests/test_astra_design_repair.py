@@ -10,6 +10,8 @@ from coscientist.astra_design_repair import (
     parse_sec_master_current_reports,
     placebo_coefficients,
     residualized_exposure,
+    select_calibration_candidate,
+    weighted_residualized_exposure,
 )
 
 
@@ -43,6 +45,17 @@ def test_residualized_exposure_is_orthogonal_to_controls():
     assert sxx > 0
     assert np.max(np.abs(controls.T @ resid)) < 1e-10
 
+    weights = np.array([1.0, 2.0, 0.8, 1.5, 0.7, 2.5], dtype=float)
+    resid_w, sxx_w, sqrt_w = weighted_residualized_exposure(x, controls, weights)
+    assert sxx_w > 0
+    assert np.max(np.abs((controls * sqrt_w[:, None]).T @ resid_w)) < 1e-10
+    y = np.array([0.01, -0.02, 0.015, 0.00, 0.025, -0.01])
+    beta_fwl = placebo_coefficients(resid_w, sxx_w, (y * sqrt_w)[:, None])[0]
+    X_full = np.column_stack([controls, x])
+    sw = sqrt_w[:, None]
+    beta_direct = np.linalg.lstsq(X_full * sw, y * sqrt_w, rcond=None)[0][-1]
+    assert beta_fwl == pytest.approx(beta_direct)
+
 
 def test_empirical_mde_uses_placebo_coefficient_dispersion():
     rx = np.array([-1.5, -0.5, 0.5, 1.5], dtype=float)
@@ -66,3 +79,11 @@ def test_primary_exposure_promotion_rule_is_outcome_blind_and_fail_closed():
     assert choose_primary_exposure(frontier_nonzero_share=.10, frontier_mde80=.004, broad_mde80=.003) == "primary_ai_exposure_z"
     assert choose_primary_exposure(frontier_nonzero_share=.40, frontier_mde80=.006, broad_mde80=.004) == "primary_ai_exposure_z"
     assert choose_primary_exposure(frontier_nonzero_share=.10, frontier_mde80=.006, broad_mde80=.006) == "POWER_REPAIR_REQUIRED"
+
+    candidates = [
+        {"name": "baseline", "calibration_mde80": .007},
+        {"name": "wls", "calibration_mde80": .0049},
+        {"name": "screen10", "calibration_mde80": .0040},
+    ]
+    assert select_calibration_candidate(candidates)["name"] == "wls"
+    assert select_calibration_candidate(candidates, threshold=.003) is None
