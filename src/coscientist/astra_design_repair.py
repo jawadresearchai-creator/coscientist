@@ -15,6 +15,7 @@ import pandas as pd
 
 
 _CIK_DECIMAL = re.compile(r"^\s*(\d+)(?:\.0+)?\s*$")
+_SEC_COMPACT_DATE = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
 
 
 def normalize_cik(value: object) -> str:
@@ -37,6 +38,23 @@ def normalize_cik(value: object) -> str:
     return digits or "0"
 
 
+def normalize_sec_filed_date(value: object) -> str:
+    """Normalize EDGAR master-index Date Filed values to ISO YYYY-MM-DD.
+
+    SEC daily master indexes may expose the filing date as compact ``YYYYMMDD``.
+    Downstream design logic uses ISO dates, so normalization happens at the
+    parser boundary rather than relying on every consumer to remember both
+    representations.
+    """
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    m = _SEC_COMPACT_DATE.fullmatch(s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return s
+
+
 def parse_sec_master_current_reports(text: str, forms: Iterable[str]) -> pd.DataFrame:
     wanted = {str(x).upper() for x in forms}
     rows: list[dict[str, str]] = []
@@ -53,7 +71,7 @@ def parse_sec_master_current_reports(text: str, forms: Iterable[str]) -> pd.Data
             "cik": cik,
             "company": company,
             "form": form.upper(),
-            "filed": filed,
+            "filed": normalize_sec_filed_date(filed),
             "filename": filename,
         })
     return pd.DataFrame(rows)
