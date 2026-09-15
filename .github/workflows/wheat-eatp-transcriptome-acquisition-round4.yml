@@ -1,0 +1,46 @@
+name: Wheat eATP Transcriptome Acquisition Round 4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/wheat-eatp-transcriptome-acquisition-round4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire-remaining-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+      COSCI_JOB_IDS: >-
+        COSCI-WEATP-GSE133921-PROC-001
+        COSCI-WEATP-JACOBSEN2-001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run acquisition bridge tests
+        run: python -m unittest research_executor.tests.test_executor research_executor.tests.test_drive_bridge research_executor.tests.test_acquisition -v
+      - name: Acquire public evidence into private Drive
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for JOB_ID in $COSCI_JOB_IDS; do
+            python -m research_executor.acquisition --job-id "$JOB_ID" --public-status "out/${JOB_ID}.json"
+          done
+      - name: Upload public-safe receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheat-eatp-transcriptome-round4-${{ github.run_id }}
+          path: out/COSCI-WEATP-*.json
+          if-no-files-found: error
+          retention-days: 7
