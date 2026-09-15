@@ -1,0 +1,41 @@
+name: Acquire Jacobsen Dryad RNA-seq workbook
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "research_executor/acquire_jacobsen_dryad.py"
+      - ".github/workflows/acquire-jacobsen-dryad.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acquire-jacobsen-dryad
+  cancel-in-progress: false
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+    steps:
+      - name: Checkout public acquisition code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Acquire authoritative Jacobsen Dryad workbook into private Drive
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m research_executor.acquire_jacobsen_dryad
