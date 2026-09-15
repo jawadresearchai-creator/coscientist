@@ -1,0 +1,78 @@
+name: Wheat eATP Transcriptome Acquisition Round 2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/wheat-eatp-transcriptome-acquisition-round2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wheat-eatp-transcriptome-acquisition-round2
+  cancel-in-progress: false
+
+jobs:
+  acquire-remaining-public-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+      COSCI_JOB_IDS: >-
+        COSCI-WEATP-GPL198-001
+        COSCI-WEATP-WANG2021-001
+    steps:
+      - name: Checkout public executor
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run acquisition bridge tests
+        run: >-
+          python -m unittest
+          research_executor.tests.test_executor
+          research_executor.tests.test_drive_bridge
+          research_executor.tests.test_acquisition
+          -v
+      - name: Execute private Drive acquisition jobs
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_TOKEN: ${{ secrets.GDRIVE_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for JOB_ID in $COSCI_JOB_IDS; do
+            python -m research_executor.acquisition --job-id "$JOB_ID" --public-status "out/${JOB_ID}.json"
+          done
+      - name: Validate public-safe receipts
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from research_executor.public_status import validate_public_status
+          forbidden={"research_question","hypothesis","private_manifest","payload","drive_destinations","source_url","sources","api_key","refresh_token","credential_value"}
+          def keys(v):
+              if isinstance(v,dict):
+                  for k,c in v.items():
+                      yield str(k).lower(); yield from keys(c)
+              elif isinstance(v,list):
+                  for c in v: yield from keys(c)
+          receipts=list(Path('out').glob('COSCI-WEATP-*.json'))
+          if len(receipts)!=2: raise SystemExit(f'expected 2 receipts, found {len(receipts)}')
+          for p in receipts:
+              status=json.loads(p.read_text(encoding='utf-8')); validate_public_status(status)
+              leaked=sorted(forbidden.intersection(set(keys(status))))
+              if leaked: raise SystemExit(f'private fields leaked in {p.name}: {leaked}')
+          print('PUBLIC_EXECUTOR_SAFE round2 receipts PASS')
+          PY
+      - name: Upload public-safe receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheat-eatp-transcriptome-round2-${{ github.run_id }}
+          path: out/COSCI-WEATP-*.json
+          if-no-files-found: error
+          retention-days: 7
